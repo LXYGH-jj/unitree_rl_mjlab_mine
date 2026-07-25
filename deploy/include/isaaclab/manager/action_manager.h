@@ -77,12 +77,14 @@ public:
 
     void process_action(std::vector<float> action)
     {
-        _action = action;
+        _action.clear();
         int idx = 0;
         for(auto & term : _terms)
         {
             auto term_action = std::vector<float>(action.begin() + idx, action.begin() + idx + term->action_dim());
             term->process_actions(term_action);
+            auto raw_action = term->raw_actions();
+            _action.insert(_action.end(), raw_action.begin(), raw_action.end());
             idx += term->action_dim();
         }
     }

@@ -18,6 +18,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -244,6 +245,30 @@ class Simulate {
   // control noise
   double ctrl_noise_std = 0.0;
   double ctrl_noise_rate = 0.0;
+
+  // robot-mounted depth camera preview
+  int depth_preview_enabled = 0;
+  std::string depth_preview_camera_name = "front_depth";
+  int depth_preview_width = 174;
+  int depth_preview_height = 116;
+  int depth_preview_update_every = 2;
+  int depth_preview_print_stats = 0;
+  std::string depth_preview_source = "opengl";
+  std::vector<int> depth_preview_raycast_geom_groups = {0};
+  int depth_preview_frame = 0;
+  std::vector<float> depth_preview_depth_;
+  std::vector<float> depth_preview_linear_depth_;
+  std::vector<unsigned char> depth_preview_rgb_;
+  std::function<void(const float*, int, int, double)> depth_publish_callback;
+  std::string depth_publish_mode = "viewer";
+  double depth_publish_dt = 0.02;
+  double depth_last_publish_time = -1.0;
+  int depth_opengl_far_to_zero_enabled = 0;
+  double depth_opengl_far_to_zero_threshold = 20.0;
+  int depth_publish_every = 1;
+  int depth_publish_frame = 0;
+
+  bool PublishPhysicsDepthIfNeeded();
 
   // watch
   char field[mjMAXUITEXT] = "qpos";

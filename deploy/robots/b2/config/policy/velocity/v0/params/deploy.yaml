@@ -1,0 +1,67 @@
+joint_ids_map: [3,4,5,0,1,2,9,10,11,6,7,8]
+step_dt: 0.02
+stiffness: [46.196, 46.196, 103.940, 46.196, 46.196, 103.940, 46.196, 46.196, 103.940, 46.196, 46.196, 103.940]
+damping:   [ 2.941,  2.941,   6.617,  2.941,  2.941,   6.617,  2.941,  2.941,   6.617,  2.941,  2.941,   6.617]
+default_joint_pos: [0.1,0.8,-1.5, -0.1,0.8,-1.5, 0.1,1.0,-1.5, -0.1,1.0,-1.5]
+debug_logger:
+  enabled: true
+  print_to_console: true
+  write_csv: true
+  every_n_steps: 10
+  csv_path: log/b2_velocity_debug.csv
+
+commands:
+  twist:
+    max_lin_acc: 0.3
+    max_ang_acc: 0.5
+    ranges:
+      lin_vel_x: [-0.5, 1.0]
+      lin_vel_y: [-0.5, 0.5]
+      ang_vel_z: [-0.5, 0.5]
+      heading: null
+
+actions:
+  JointPositionAction:
+    clip:
+      [[-0.80, 0.80], [-0.80, 1.80], [-2.70, -0.45], [-0.80, 0.80], [-0.80, 1.80], [-2.70, -0.45], [-0.80, 0.80], [-0.80, 1.80], [-2.70, -0.45], [-0.80, 0.80], [-0.80, 1.80], [-2.70, -0.45]]
+    joint_names: [.*]
+    scale: [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]
+    offset: [0.1,0.8,-1.5, -0.1,0.8,-1.5, 0.1,1.0,-1.5, -0.1,1.0,-1.5]
+    joint_ids: null
+
+observations:
+  base_ang_vel:
+    params: {}
+    clip: null
+    scale: [1.0, 1.0, 1.0]
+    history_length: 1
+  projected_gravity:
+    params: {}
+    clip: null
+    scale: [1.0, 1.0, 1.0]
+    history_length: 1
+  b2_velocity_commands:
+    params: {command_name: twist}
+    clip: null
+    scale: [1.0, 1.0, 1.0]
+    history_length: 1
+  b2_gait_phase:
+    params: {period: 0.6, command_name: twist}
+    clip: null
+    scale: [1.0, 1.0]
+    history_length: 1
+  joint_positions:
+    params: {}
+    clip: null
+    scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    history_length: 1
+  joint_velocities:
+    params: {}
+    clip: null
+    scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    history_length: 1
+  actions:
+    params: {}
+    clip: null
+    scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    history_length: 1

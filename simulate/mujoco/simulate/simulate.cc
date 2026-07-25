@@ -15,11 +15,14 @@
 #include "simulate.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <climits>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <ratio>
@@ -555,6 +558,232 @@ void ShowOverlayText(mj::Simulate* sim, mjrRect viewport, int font, int gridpos,
 
 void ShowImage(mj::Simulate* sim, mjrRect viewport, const unsigned char* image) {
   mjr_drawPixels(image, nullptr, viewport, &sim->platform_ui->mjr_context());
+}
+
+float DepthBufferToMeters(mj::Simulate* sim, float depth_buffer) {
+  depth_buffer = std::clamp(depth_buffer, 0.0f, 1.0f);
+  const auto& context = sim->platform_ui->mjr_context();
+  if (context.readDepthMap == mjDEPTH_ZEROFAR) {
+    depth_buffer = 1.0f - depth_buffer;
+  }
+
+  const float near_plane = std::max(
+      1.0e-4f,
+      static_cast<float>(sim->m_->vis.map.znear * sim->m_->stat.extent));
+  const float far_plane = std::max(
+      near_plane + 1.0e-3f,
+      static_cast<float>(sim->m_->vis.map.zfar * sim->m_->stat.extent));
+  const float z_ndc = 2.0f * depth_buffer - 1.0f;
+  return (2.0f * near_plane * far_plane) /
+         (far_plane + near_plane - z_ndc * (far_plane - near_plane));
+}
+
+std::array<mjtByte, mjNGROUP> DepthRaycastGeomGroupMask(mj::Simulate* sim) {
+  std::array<mjtByte, mjNGROUP> geomgroup{};
+  for (const int group : sim->depth_preview_raycast_geom_groups) {
+    if (0 <= group && group < mjNGROUP) {
+      geomgroup[static_cast<size_t>(group)] = 1;
+    }
+  }
+  return geomgroup;
+}
+
+void RenderRaycastDepth(
+    mj::Simulate* sim,
+    int camera_id,
+    int width,
+    int height,
+    std::vector<float>& depth,
+    std::vector<float>& linear_depth,
+    std::vector<unsigned char>& rgb) {
+  const mjModel* m = sim->m_;
+  const mjData* d = sim->d_;
+  const mjtNum* cam_pos = d->cam_xpos + 3 * camera_id;
+  const mjtNum* cam_mat = d->cam_xmat + 9 * camera_id;
+  const mjtNum fovy_rad = m->cam_fovy[camera_id] * mjPI / 180.0;
+  const mjtNum half_height = std::tan(0.5 * fovy_rad);
+  const mjtNum half_width = half_height * static_cast<mjtNum>(width) / static_cast<mjtNum>(height);
+  const auto geomgroup = DepthRaycastGeomGroupMask(sim);
+
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < width; ++x) {
+      const mjtNum u = (static_cast<mjtNum>(x) + 0.5) / static_cast<mjtNum>(width);
+      const mjtNum v = (static_cast<mjtNum>(y) + 0.5) / static_cast<mjtNum>(height);
+      const mjtNum ray_local_x = -half_width + 2.0 * half_width * u;
+      const mjtNum ray_local_y = half_height - 2.0 * half_height * v;
+      mjtNum ray_local[3] = {ray_local_x, ray_local_y, -1.0};
+      mju_normalize3(ray_local);
+
+      mjtNum ray_world[3];
+      mju_mulMatVec3(ray_world, cam_mat, ray_local);
+      mju_normalize3(ray_world);
+
+      int geomid = -1;
+      const mjtNum ray_dist = mj_ray(
+          m, d, cam_pos, ray_world, geomgroup.data(), /* flg_static = */ 1,
+          /* bodyexclude = */ -1, &geomid);
+      float meters = 0.0f;
+      if (ray_dist >= 0.0 && geomid >= 0) {
+        meters = static_cast<float>(ray_dist * (-ray_local[2]));
+      }
+
+      const int index = y * width + x;
+      linear_depth[static_cast<size_t>(index)] = meters;
+      depth[static_cast<size_t>(index)] = meters;
+
+      const float normalized = meters > 0.0f ? std::clamp(meters / 2.0f, 0.0f, 1.0f) : 0.0f;
+      const unsigned char gray =
+          static_cast<unsigned char>((1.0f - normalized) * 255.0f);
+      rgb[3 * index + 0] = gray;
+      rgb[3 * index + 1] = gray;
+      rgb[3 * index + 2] = gray;
+    }
+  }
+}
+
+void ShowDepthPreview(mj::Simulate* sim, mjrRect rect) {
+  if (!sim->depth_preview_enabled || !sim->m_ || !sim->d_) {
+    return;
+  }
+
+  const int camera_id = mj_name2id(
+      sim->m_, mjOBJ_CAMERA, sim->depth_preview_camera_name.c_str());
+  if (camera_id < 0) {
+    static bool warned = false;
+    if (!warned) {
+      std::printf("[depth_preview] camera not found: %s\n",
+                  sim->depth_preview_camera_name.c_str());
+      warned = true;
+    }
+    return;
+  }
+
+  const int width = std::max(1, sim->depth_preview_width);
+  const int height = std::max(1, sim->depth_preview_height);
+  sim->depth_preview_depth_.assign(static_cast<size_t>(width * height), 1.0f);
+  sim->depth_preview_linear_depth_.assign(
+      static_cast<size_t>(width * height), 0.0f);
+  sim->depth_preview_rgb_.assign(static_cast<size_t>(3 * width * height), 0);
+  const bool raycast_depth = sim->depth_preview_source == "raycast";
+
+  mjrRect viewport = {
+    rect.left + rect.width - width - 12,
+    rect.bottom + 12,
+    width,
+    height
+  };
+
+  if (raycast_depth) {
+    RenderRaycastDepth(
+        sim,
+        camera_id,
+        width,
+        height,
+        sim->depth_preview_depth_,
+        sim->depth_preview_linear_depth_,
+        sim->depth_preview_rgb_);
+  } else {
+    mjvCamera depth_cam;
+    mjv_defaultCamera(&depth_cam);
+    depth_cam.type = mjCAMERA_FIXED;
+    depth_cam.fixedcamid = camera_id;
+
+    mjvOption depth_opt = sim->opt;
+    for (int i = 0; i < mjNGROUP; ++i) {
+      depth_opt.geomgroup[i] = 0;
+    }
+    depth_opt.geomgroup[0] = 1;
+
+    mjv_updateScene(
+        sim->m_, sim->d_, &depth_opt, &sim->pert, &depth_cam, mjCAT_ALL, &sim->scn);
+
+    mjr_render(viewport, &sim->scn, &sim->platform_ui->mjr_context());
+    mjr_readPixels(nullptr, sim->depth_preview_depth_.data(), viewport,
+                   &sim->platform_ui->mjr_context());
+  }
+
+  float min_depth = 1.0f;
+  float max_depth = 0.0f;
+  double sum_depth = 0.0;
+  float min_meters = std::numeric_limits<float>::infinity();
+  float max_meters = 0.0f;
+  double sum_meters = 0.0;
+  int non_far_count = 0;
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < width; ++x) {
+      const int src_index = y * width + x;
+      const int dst_y = raycast_depth ? y : height - 1 - y;
+      const int dst_index = dst_y * width + x;
+      const float depth = raycast_depth ?
+          sim->depth_preview_depth_[static_cast<size_t>(src_index)] :
+          std::clamp(sim->depth_preview_depth_[static_cast<size_t>(src_index)], 0.0f, 1.0f);
+      float meters = raycast_depth ?
+          depth :
+          DepthBufferToMeters(sim, depth);
+      if (!raycast_depth &&
+          sim->depth_opengl_far_to_zero_enabled &&
+          meters > sim->depth_opengl_far_to_zero_threshold) {
+        meters = 0.0f;
+      }
+      if (!raycast_depth) {
+        sim->depth_preview_linear_depth_[static_cast<size_t>(dst_index)] = meters;
+      }
+      min_depth = std::min(min_depth, depth);
+      max_depth = std::max(max_depth, depth);
+      sum_depth += depth;
+      min_meters = std::min(min_meters, meters);
+      max_meters = std::max(max_meters, meters);
+      sum_meters += meters;
+      if (depth < 0.999f) {
+        ++non_far_count;
+      }
+      if (!raycast_depth) {
+        const unsigned char gray =
+            static_cast<unsigned char>(std::clamp(1.0f - depth, 0.0f, 1.0f) * 255.0f);
+        sim->depth_preview_rgb_[3 * dst_index + 0] = gray;
+        sim->depth_preview_rgb_[3 * dst_index + 1] = gray;
+        sim->depth_preview_rgb_[3 * dst_index + 2] = gray;
+      }
+    }
+  }
+
+  mjr_drawPixels(sim->depth_preview_rgb_.data(), nullptr, viewport,
+                 &sim->platform_ui->mjr_context());
+  mjr_overlay(mjFONT_NORMAL, mjGRID_BOTTOMRIGHT, viewport, "front_depth", "white=near",
+              &sim->platform_ui->mjr_context());
+
+  const int publish_every = std::max(1, sim->depth_publish_every);
+  if (sim->depth_publish_mode == "viewer" && sim->depth_publish_callback &&
+      sim->depth_publish_frame++ % publish_every == 0) {
+    sim->depth_publish_callback(
+        sim->depth_preview_linear_depth_.data(), width, height, sim->d_->time);
+  }
+
+  const int update_every = std::max(1, sim->depth_preview_update_every);
+  if (sim->depth_preview_print_stats &&
+      sim->depth_preview_frame++ % (30 * update_every) == 0) {
+    const float center_depth =
+        sim->depth_preview_depth_[static_cast<size_t>((height / 2) * width + width / 2)];
+    const float center_meters =
+        sim->depth_preview_linear_depth_[static_cast<size_t>((height / 2) * width + width / 2)];
+    std::printf(
+        "[depth_preview] camera=%s size=%dx%d zbuf_min=%.6f zbuf_max=%.6f "
+        "zbuf_mean=%.6f center=%.6f meters_min=%.6f meters_max=%.6f "
+        "meters_mean=%.6f meters_center=%.6f non_far=%d/%d\n",
+        sim->depth_preview_camera_name.c_str(),
+        width,
+        height,
+        min_depth,
+        max_depth,
+        static_cast<float>(sum_depth / std::max(1, width * height)),
+        center_depth,
+        min_meters,
+        max_meters,
+        static_cast<float>(sum_meters / std::max(1, width * height)),
+        center_meters,
+        non_far_count,
+        width * height);
+  }
 }
 
 // load state from history buffer
@@ -1896,6 +2125,39 @@ void UiEvent(mjuiState* state) {
 namespace mujoco {
 namespace mju = ::mujoco::sample_util;
 
+bool Simulate::PublishPhysicsDepthIfNeeded() {
+  if (!depth_publish_callback || depth_publish_mode != "physics" || !m_ || !d_) {
+    return false;
+  }
+
+  const double publish_dt = std::max(1.0e-6, depth_publish_dt);
+  if (depth_last_publish_time >= 0.0 && d_->time - depth_last_publish_time < publish_dt) {
+    return false;
+  }
+
+  const int camera_id = mj_name2id(m_, mjOBJ_CAMERA, depth_preview_camera_name.c_str());
+  if (camera_id < 0) {
+    static bool warned = false;
+    if (!warned) {
+      std::printf("[depth_publish] camera not found: %s\n",
+                  depth_preview_camera_name.c_str());
+      warned = true;
+    }
+    return false;
+  }
+
+  const int width = std::max(1, depth_preview_width);
+  const int height = std::max(1, depth_preview_height);
+  std::vector<float> depth(static_cast<size_t>(width * height), 0.0f);
+  std::vector<float> linear_depth(static_cast<size_t>(width * height), 0.0f);
+  std::vector<unsigned char> rgb(static_cast<size_t>(3 * width * height), 0);
+
+  RenderRaycastDepth(this, camera_id, width, height, depth, linear_depth, rgb);
+  depth_publish_callback(linear_depth.data(), width, height, d_->time);
+  depth_last_publish_time = d_->time;
+  return true;
+}
+
 Simulate::Simulate(std::unique_ptr<PlatformUIAdapter> platform_ui,
                    mjvCamera* cam, mjvOption* opt, mjvPerturb* pert,
                    bool is_passive)
@@ -2676,6 +2938,8 @@ void Simulate::Render() {
   if (this->sensor) {
     ShowSensor(this, smallrect);
   }
+
+  ShowDepthPreview(this, smallrect);
 
   // take screenshot, save to file
   if (this->screenshotrequest.exchange(false)) {

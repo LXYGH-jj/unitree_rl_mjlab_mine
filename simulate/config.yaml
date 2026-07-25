@@ -1,22 +1,46 @@
-robot: "g1"
-robot_scene: "src/assets/robots/unitree_g1/xmls/scene_g1.xml"
-#robot: "g1_23dof"
-#robot_scene: "src/assets/robots/unitree_g1/xmls/scene_g1_23dof.xml"
-#robot: "h1_2"
-#robot_scene: "src/assets/robots/unitree_h1_2/xmls/scene_h1_2.xml"
-#robot: "go2"
-#robot_scene: "src/assets/robots/unitree_go2/xmls/scene_go2.xml"
-#robot: "a2"
-#robot_scene: "src/assets/robots/unitree_a2/xmls/scene_a2.xml"
+# robot: "g1"
+# robot_scene: "src/assets/robots/unitree_g1/xmls/scene_g1.xml"
+# robot: "g1_23dof"
+# robot_scene: "src/assets/robots/unitree_g1/xmls/scene_g1_23dof.xml"
+# robot: "h1_2"
+# robot_scene: "src/assets/robots/unitree_h1_2/xmls/scene_h1_2.xml"
+# robot: "b2z1"
+# robot_scene: "src/assets/robots/unitree_b2z1/xmls/scene_b2z1.xml"
+# b2z1 rough scene options:
+# robot_scene: "src/assets/robots/unitree_b2z1/xmls/scene_b2z1_stairs.xml"
+# robot_scene: "src/assets/robots/unitree_b2z1/xmls/scene_b2z1_slope.xml"
+# robot_scene: "src/assets/robots/unitree_b2z1/xmls/scene_b2z1_rough_blocks.xml"
+# b2 rough scene options:
+# robot_scene: "src/assets/robots/unitree_b2/xmls/scene_b2.xml"
+# robot_scene: "src/assets/robots/unitree_b2/xmls/scene_b2_stairs.xml"
+# robot_scene: "src/assets/robots/unitree_b2/xmls/scene_b2_slope.xml"
+# robot_scene: "src/assets/robots/unitree_b2/xmls/scene_b2_rough_blocks.xml"
+robot: "go2"
+robot_scene: "src/assets/robots/unitree_go2/xmls/scene_go2.xml"
+# robot: "a2"
+# robot_scene: "src/assets/robots/unitree_a2/xmls/scene_a2.xml"
 
 domain_id: 0  # Domain id
 interface: "lo" # Interface
 
-use_joystick: 1 # Simulate Unitree WirelessController using a gamepad
-joystick_type: "xbox" # support "xbox" and "switch" gamepad layout
+use_joystick: 0 # For b2z1 sim-in-the-loop, let the deploy controller own teleop input by default
+joystick_type: "xbox" # support "keyboard", "xbox" and "switch"
 joystick_device: "/dev/input/js0" # Device path
 joystick_bits: 16 # Some game controllers may only have 8-bit accuracy
 
 print_scene_information: 1 # Print link, joint and sensors information of robot
 
 enable_elastic_band: 0 # Virtual spring band, used for lifting h1
+
+lightweight_realism:
+  joint_pos_noise_std: 0.001
+  joint_vel_noise_std: 0.03
+  imu_gyro_noise_std: 0.008
+  imu_acc_noise_std: 0.05
+  imu_rpy_noise_std: 0.003
+  base_lin_vel_noise_std: 0.01
+  action_delay_ms: 4
+  ctrl_noise_std: 0.0
+  ctrl_noise_rate: 2.0
+  randomize_foot_friction: 1
+  foot_friction_range: [0.40, 0.50]

@@ -1,0 +1,48 @@
+robot: "go2"
+robot_scene: "src/assets/robots/unitree_go2/xmls/scene_go2_parkour_multi.xml"
+# robot_scene: "src/assets/robots/unitree_go2/xmls/scene_go2_parkour_multi_from_gaps.xml"
+# robot_scene: "src/assets/robots/unitree_go2/xmls/scene_go2_parkour_multi_from_stairs.xml"
+
+
+domain_id: 0  # Domain id
+interface: "lo" # Interface
+
+use_joystick: 0 # Feed /dev/input/js0 axes into LowState joystick; keyboard shortcuts still overlay in deploy.
+joystick_type: "xbox" # support "xbox", "switch", and "keyboard" layouts
+joystick_device: "/dev/input/js0" # Device path
+joystick_bits: 16 # Some game controllers may only have 8-bit accuracy
+
+print_scene_information: 1 # Print link, joint and sensors information of robot
+
+enable_elastic_band: 0 # Virtual spring band, used for lifting h1
+
+# Go2 depth-student sim needs foot contact flags. MuJoCo bridge converts
+# contact on these foot geoms to LowState foot_force/foot_force_est.
+publish_foot_force_from_contacts: 1
+foot_contact_force_value: 100
+foot_contact_geom_names: ["FL", "FR", "RL", "RR"]
+
+# Visualize the robot-mounted depth camera in the MuJoCo viewer before wiring
+# it into the policy input. White is near, black is far.
+depth_preview:
+  enabled: 1
+  camera_name: "front_depth"
+  width: 87
+  height: 58
+  update_every: 2
+  print_stats: 1
+  source: "raycast" # "raycast" matches training raw depth semantics; "opengl" uses z-buffer.
+  raycast_geom_groups: [0]
+
+depth_camera_publisher:
+  enabled: 1
+  # mode: "physics" # "physics" publishes from the MuJoCo step loop; "viewer" uses RenderLoop.
+  mode: "viewer"
+  publish_dt: 0.02
+  topic: "/go2_depth/sim/depth/image_raw"
+  node_name: "go2_mujoco_depth_camera_publisher"
+  publish_every: 1
+  print_every: 30
+  opengl_far_to_zero_enabled: 1
+  opengl_far_to_zero_threshold: 20.0
+  

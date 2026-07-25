@@ -1,0 +1,27 @@
+observations:
+  depth:
+    depth_camera_observation:
+      params:
+        provider: ros2
+        source: /go2_depth/sim/depth/image_raw
+        input_unit: m
+        output_height: 58
+        output_width: 87
+        near_clip: 0.0
+        far_clip: 2.0
+        invert: true
+        centered: false
+        resize_mode: bilinear
+        zero_is_invalid: true
+        invalid_fill: far
+        fallback: zero
+        ros2_timeout_ms: 3000
+        ros2_node_name: go2_depth_sim_test_subscriber
+
+        debug:
+          enabled: true
+          dir: /tmp/go2_depth_camera_debug_ros2_sim
+          save_every: 1
+          save_raw: true
+          save_processed: true
+          print_stats: true

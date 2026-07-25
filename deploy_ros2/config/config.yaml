@@ -1,0 +1,39 @@
+FSM:
+  _: # enabled fsms
+    Passive:
+      id: 1
+    FixStand:
+      id: 2
+    Velocity:
+      id: 3
+      type: RLBase
+  Passive:
+    transitions:
+      FixStand: LT + A.on_pressed
+    mode: [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10]
+    kd: [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]
+  FixStand:
+    transitions:
+      Passive: LT + B.on_pressed
+      Velocity: RT + X.on_pressed
+    kp: [60, 80, 80, 60, 80, 80, 60, 80, 80, 60, 80, 80]
+    kd: [5, 4, 4, 5, 4, 4, 5, 4, 4, 5, 4, 4]
+    ts: [0, 1, 2]
+    qs: [
+      [],
+      [0.0, 1.36, -2.65, 0.0, 1.36, -2.65, 0.0, 1.36, -2.65, 0.0, 1.36, -2.65],
+      [0., 0.8, -1.5, 0., 0.8, -1.5, 0., 0.8, -1.5, 0., 0.8, -1.5],
+    ]
+  Velocity:
+    transitions:
+      Passive: LT + B.on_pressed
+    policy_dir: ../../deploy/robots/go2/config/policy/velocity
+
+ROS2:
+  lowstate_topic: /lowstate
+  lowcmd_topic: /lowcmd
+  motion_switch_request_topic: /api/motion_switcher/request
+  lowstate_timeout_sec: 1.0
+  release_interval_sec: 1.0
+  release_max_attempts: 5
+  spin_sleep_ms: 1

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <mujoco/mujoco.h>
-
 #include <unitree/robot/channel/channel_publisher.hpp>
 #include <unitree/robot/channel/channel_subscriber.hpp>
 #include <unitree/dds_wrapper/robots/go2/go2.h>
@@ -9,12 +8,33 @@
 #include <unitree/idl/hg/BmsState_.hpp>
 #include <unitree/idl/hg/IMUState_.hpp>
 
+#include <algorithm>
+#include <array>
 #include <iostream>
+#include <type_traits>
 
 #include "param.h"
 #include "physics_joystick.h"
 
 #define MOTOR_SENSOR_NUM 3
+
+namespace detail
+{
+template <typename...>
+using void_t = void;
+
+template <typename Msg, typename = void>
+struct has_foot_force_fields : std::false_type {};
+
+template <typename Msg>
+struct has_foot_force_fields<
+    Msg,
+    void_t<
+        decltype(std::declval<Msg&>().foot_force()),
+        decltype(std::declval<Msg&>().foot_force_est())
+    >
+> : std::true_type {};
+}
 
 class UnitreeSDK2BridgeBase
 {
@@ -31,6 +51,13 @@ public:
                 joystick = std::make_shared<XBoxJoystick>(param::config.joystick_device, param::config.joystick_bits);
             } else if(param::config.joystick_type == "switch") {
                 joystick  = std::make_shared<SwitchJoystick>(param::config.joystick_device, param::config.joystick_bits);
+            } else if(param::config.joystick_type == "keyboard") {
+                joystick = std::make_shared<KeyboardJoystick>();
+                std::cout << "[simulate] keyboard teleop enabled:\n"
+                          << "  move: W/A/S/D, yaw: Q/E\n"
+                          << "  LT: Left/Right Shift, RT: Left/Right Ctrl\n"
+                          << "  A: J, B: K, X: U, Y: I\n"
+                          << "  dpad: arrow keys\n";
             } else {
                 std::cerr << "Unsupported joystick type: " << param::config.joystick_type << std::endl;
                 exit(EXIT_FAILURE);
@@ -89,6 +116,7 @@ protected:
     int secondary_imu_acc_adr_ = -1;
 
     std::shared_ptr<unitree::common::UnitreeJoystick> joystick = nullptr;
+    std::array<int, 4> foot_geom_ids_ = {-1, -1, -1, -1};
 
     void _check_sensor()
     {
@@ -145,6 +173,39 @@ protected:
         if (sensor_id >= 0) {
             secondary_imu_acc_adr_ = mj_model_->sensor_adr[sensor_id];
         }
+
+        for (size_t i = 0; i < foot_geom_ids_.size() && i < param::config.foot_contact_geom_names.size(); ++i) {
+            foot_geom_ids_[i] = mj_name2id(
+                mj_model_,
+                mjOBJ_GEOM,
+                param::config.foot_contact_geom_names[i].c_str()
+            );
+        }
+    }
+
+    std::array<int16_t, 4> foot_forces_from_contacts() const
+    {
+        std::array<int16_t, 4> forces = {0, 0, 0, 0};
+        if (param::config.publish_foot_force_from_contacts != 1) {
+            return forces;
+        }
+
+        const auto contact_force = static_cast<int16_t>(
+            std::clamp(param::config.foot_contact_force_value, 0.0, 32767.0)
+        );
+        for (int c = 0; c < mj_data_->ncon; ++c) {
+            const auto& contact = mj_data_->contact[c];
+            for (size_t foot = 0; foot < foot_geom_ids_.size(); ++foot) {
+                const int foot_geom_id = foot_geom_ids_[foot];
+                if (foot_geom_id < 0) {
+                    continue;
+                }
+                if (contact.geom1 == foot_geom_id || contact.geom2 == foot_geom_id) {
+                    forces[foot] = contact_force;
+                }
+            }
+        }
+        return forces;
     }
 };
 
@@ -221,6 +282,13 @@ public:
                 lowstate->msg_.imu_state().accelerometer()[1] = mj_data_->sensordata[imu_acc_adr_ + 1];
                 lowstate->msg_.imu_state().accelerometer()[2] = mj_data_->sensordata[imu_acc_adr_ + 2];
             }
+
+            using LowStateMsg = std::remove_reference_t<decltype(lowstate->msg_)>;
+            if constexpr (detail::has_foot_force_fields<LowStateMsg>::value) {
+                const auto foot_forces = foot_forces_from_contacts();
+                lowstate->msg_.foot_force(foot_forces);
+                lowstate->msg_.foot_force_est(foot_forces);
+            }
             
             lowstate->msg_.tick() = std::round(mj_data_->time / 1e-3);
             lowstate->unlockAndPublish();
@@ -237,6 +305,15 @@ public:
                 highstate->msg_.velocity()[1] = mj_data_->sensordata[frame_vel_adr_ + 1];
                 highstate->msg_.velocity()[2] = mj_data_->sensordata[frame_vel_adr_ + 2];
             }
+            // static int print_count = 0;
+            // if (++print_count % 100 == 0) {
+            //     std::cout
+            //         << "[sim_highstate] pos="
+            //         << highstate->msg_.position()[0] << ", "
+            //         << highstate->msg_.position()[1] << ", "
+            //         << highstate->msg_.position()[2]
+            //         << std::endl;
+            // }
             highstate->unlockAndPublish();
         }
         // wireless_controller
@@ -313,7 +390,9 @@ public:
         }
 
         // In practice, bmsstate is sent at a low frequency; here it is sent with the main loop
-        bmsstate->unlockAndPublish();
+        if (bmsstate->trylock()) {
+            bmsstate->unlockAndPublish();
+        }
     }
 
     using BmsState_t = unitree::robot::RealTimePublisher<unitree_hg::msg::dds_::BmsState_>;

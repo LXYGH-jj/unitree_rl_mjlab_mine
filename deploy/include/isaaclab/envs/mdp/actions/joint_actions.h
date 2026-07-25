@@ -5,6 +5,8 @@
 
 #include <eigen3/Eigen/Dense>
 #include <yaml-cpp/yaml.h>
+#include <algorithm>
+#include <cmath>
 #include "isaaclab/envs/manager_based_rl_env.h"
 #include "isaaclab/manager/action_manager.h"
 
@@ -34,18 +36,35 @@ public:
         if(!cfg["clip"].IsNull()) {
             _clip = cfg["clip"].as<std::vector<std::vector<float> >>();
         }
+        if(cfg["raw_clip"] && !cfg["raw_clip"].IsNull()) {
+            _raw_clip = cfg["raw_clip"].as<std::vector<float>>();
+        }
+        if(cfg["policy_to_sim_reindex"] && !cfg["policy_to_sim_reindex"].IsNull()) {
+            _policy_to_sim_reindex = cfg["policy_to_sim_reindex"].as<std::vector<int>>();
+        }
     }
 
     virtual void process_actions(std::vector<float> actions)
     {
-        // TODO: modify action by joint_ids
         _raw_actions = actions;
+        for (auto& raw_action : _raw_actions) {
+            if (!std::isfinite(raw_action)) {
+                raw_action = 0.0f;
+            }
+            if (_raw_clip.size() >= 2) {
+                raw_action = std::clamp(raw_action, _raw_clip[0], _raw_clip[1]);
+            }
+        }
         for(int i(0); i<_action_dim; ++i)
         {
+            const int action_idx =
+                i < static_cast<int>(_policy_to_sim_reindex.size()) ? _policy_to_sim_reindex[i] : i;
+            float raw_action =
+                action_idx >= 0 && action_idx < static_cast<int>(_raw_actions.size()) ? _raw_actions[action_idx] : 0.0f;
             if(!_scale.empty()) {
-                _processed_actions[i] = _raw_actions[i] * _scale[i];
+                _processed_actions[i] = raw_action * _scale[i];
             } else {
-                _processed_actions[i] = _raw_actions[i];
+                _processed_actions[i] = raw_action;
             }
             if(!_offset.empty()) {
                 _processed_actions[i] += _offset[i];
@@ -89,6 +108,8 @@ protected:
 
     std::vector<float> _scale;
     std::vector<float> _offset;
+    std::vector<float> _raw_clip;
+    std::vector<int> _policy_to_sim_reindex;
     std::vector<std::vector<float> > _clip;
 };
 

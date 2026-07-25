@@ -1,0 +1,45 @@
+FSM:
+  _: # enabled fsms
+    Passive:
+      id: 1
+    FixStand:
+      id: 2
+    Velocity:
+      id: 3
+      type: RLBase
+  Passive:
+    transitions:
+      FixStand: LT + up.on_pressed
+    mode: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    kd: [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]
+  FixStand:
+    transitions:
+      Passive: LT + B.on_pressed
+      Velocity: RT + A.on_pressed
+    kp: [60, 80, 80, 60, 80, 80, 60, 80, 80, 60, 80, 80]
+    kd: [5, 4, 4, 5, 4, 4, 5, 4, 4, 5, 4, 4]
+    ts: [0, 1, 2]
+    qs: [
+      [],
+      [0.0, 1.36, -2.65, 0.0, 1.36, -2.65, 0.0, 1.36, -2.65, 0.0, 1.36, -2.65],
+      # [0., 0.8, -1.5, 0., 0.8, -1.5, 0., 0.8, -1.5, 0., 0.8, -1.5],
+      [0.1, 0.9, -1.8,
+      -0.1, 0.9, -1.8,
+        0.1, 0.9, -1.8,
+      -0.1, 0.9, -1.8]
+    ]
+  Velocity:
+    transitions:
+      Passive: LT + B.on_pressed
+    policy_dir: /home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/deploy/robots/go2_depth/config/policy/depth_student/v3
+
+# Simulation-only helper. Keep disabled in config.yaml used for real robots.
+sim_auto_start:
+  enabled: false
+  steps:
+    - from: Passive
+      to: FixStand
+      after_sec: 1.0
+    - from: FixStand
+      to: Velocity
+      after_sec: 3.0

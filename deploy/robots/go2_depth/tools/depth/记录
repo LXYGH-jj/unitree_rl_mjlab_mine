@@ -1,0 +1,5 @@
+*_depth.txt：原始深度值，没做处理
+*_depth_raw.png：16 位原始深度图，最接近相机直出
+*_depth_gray.png：深度的灰度可视化图
+*_color.png：彩色原图
+*_color_gray.png：彩色图转灰度图

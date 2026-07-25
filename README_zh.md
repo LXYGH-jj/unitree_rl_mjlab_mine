@@ -192,6 +192,27 @@ cmake .. && make -j8
 ./simulate/build/unitree_mujoco
 ```
 
+若启动时出现类似以下报错（`dds_writecdr_impl_common` 断言失败）：
+
+```text
+dds_writecdr_impl_common: Assertion '(wr->m_iox_pub == NULL) == (d->a.iox_chunk == NULL)' failed.
+```
+
+通常是 `libddsc` 和 `libddscxx` 来自不同路径导致。可在当前终端先执行：
+
+```bash
+export UNITREE_DDS_LIB=/home/vi/lxy/b2+z1/b2z1_hw/external/unitree_sdk2/x86_64/lib
+export LD_LIBRARY_PATH=$UNITREE_DDS_LIB:$LD_LIBRARY_PATH
+```
+
+建议检查 `unitree_mujoco` 实际加载库路径是否一致：
+
+```bash
+ldd ./simulate/build/unitree_mujoco | grep -E 'libddsc|libddscxx'
+```
+
+若输出都指向同一套路径（建议都在 `unitree_sdk2/x86_64/lib`），再重新启动仿真器与控制程序。
+
 可在 `simulate/config` 中选择对应机器人
 
 启动仿真控制程序：
@@ -232,3 +253,50 @@ cd deploy/robots/g1/build
 - [mujoco_warp](https://github.com/google-deepmind/mujoco_warp.git): 提供 GPU 加速渲染与仿真接口。
 - [mujoco](https://github.com/google-deepmind/mujoco.git): 提供强大仿真功能。
 
+
+
+cd /home/vi/lxy/unitree_ws/src/unitree_rl_mjlab
+source /opt/ros/humble/setup.bash
+unset LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/opt/ros/humble/lib:/usr/local/lib
+./simulate/build/unitree_mujoco --config config_go2_depth.yaml
+
+cd /home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/deploy/robots/go2_depth
+ROS_LOG_DIR=/tmp/ros_log ./build_ros2/depth_camera_debug_test tools/depth_camera_ros2_sim_test.yaml
+./build/go2_depth_ctrl --network lo --config config/config_sim.yaml
+
+
+ROS2
+cd /home/vi/lxy/unitree_ws/src/unitree_rl_mjlab
+source /opt/ros/humble/setup.bash
+unset LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/usr/local/lib:/opt/ros/humble/lib
+./simulate/build/unitree_mujoco --config config_go2_depth.yaml
+
+cd /home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/deploy/robots/go2_depth
+source /opt/ros/humble/setup.bash
+unset LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/usr/local/lib:/opt/ros/humble/lib:/home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/deploy/thirdparty/onnxruntime-linux-x64-1.22.0/lib
+ROS_LOG_DIR=/tmp/ros_log ./build_ros2/go2_depth_ctrl --network lo --config /home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/deploy/robots/go2_depth/config/config_sim.yaml
+
+
+导出地形为xml
+  cd /home/vi/lxy/unitree_ws/src/astro_parkour
+uv run python scripts/export_play_terrain_xml.py \
+  --terrain multi \
+  --collision-horizontal-scale 0.1 \
+  --output /tmp/astro_parkour_play_terrain
+
+  复制地形
+  mkdir -p /home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/src/assets/robots/unitree_go2/xmls/terrains
+cp /tmp/astro_parkour_play_terrain/terrain.xml \
+  /home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/src/assets/robots/unitree_go2/xmls/terrains/play_terrain.xml
+
+  替换地形
+  cd /home/vi/lxy/unitree_ws/src/astro_parkour
+
+.venv/bin/python scripts/build_deploy_scene_with_terrain.py \
+  --base-scene /home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/src/assets/robots/unitree_go2/xmls/scene_go2_parkour_multi.xml \
+  --terrain-xml /home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/src/assets/robots/unitree_go2/xmls/terrains/stairs_terrain.xml \
+  --output /home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/src/assets/robots/unitree_go2/xmls/scene_go2_parkour_multi_from_stairs.xml \
+  --base-pos 28 0 0.445

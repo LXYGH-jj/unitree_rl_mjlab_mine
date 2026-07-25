@@ -38,6 +38,7 @@ source ~/.bashrc
 conda create -n unitree_rl_mjlab python=3.11
 ```
 
+
 ### 1.3 激活虚拟环境
 
 ```bash
@@ -74,3 +75,74 @@ pip install -e .
 
 按照上述步骤完成后，您已经准备好在虚拟环境中运行相关程序。若遇到问题，请参考各组件的官方文档或检查依赖安装是否正确。
 
+---
+
+## 部署仿真地形切换
+
+部署仿真器默认加载平地场景，配置在：
+
+`simulate/config.yaml`
+
+其中 `robot_scene` 字段决定加载哪个 MuJoCo 场景 XML。除了默认平地，现在仓库里也提供了楼梯、斜坡和离散障碍块场景。
+
+例如，B2Z1 可以切换为：
+
+```yaml
+robot_scene: "src/assets/robots/unitree_b2z1/xmls/scene_b2z1_stairs.xml"
+```
+
+或者：
+
+```yaml
+robot_scene: "src/assets/robots/unitree_b2z1/xmls/scene_b2z1_slope.xml"
+```
+
+也可以在启动仿真时直接指定：
+
+```bash
+cd simulate/build
+./unitree_mujoco -n lo -s src/assets/robots/unitree_b2z1/xmls/scene_b2z1_rough_blocks.xml
+```
+
+当前提供的部署仿真地形包括：
+
+- B2:
+  `scene_b2.xml`
+  `scene_b2_stairs.xml`
+  `scene_b2_slope.xml`
+  `scene_b2_rough_blocks.xml`
+- B2Z1:
+  `scene_b2z1.xml`
+  `scene_b2z1_stairs.xml`
+  `scene_b2z1_slope.xml`
+  `scene_b2z1_rough_blocks.xml`
+
+### 常见问题：`dds_writecdr_impl_common` 断言失败
+
+如果仿真场景已经打印出机器人 link / joint / sensor 信息，随后又出现：
+
+```text
+dds_writecdr_impl_common: Assertion '(wr->m_iox_pub == NULL) == (d->a.iox_chunk == NULL)' failed.
+```
+
+这通常不是地形 XML 的问题，而是 `libddsc` 和 `libddscxx` 来自不同安装路径，导致 CycloneDDS / iceoryx 运行时不一致。
+
+建议在启动仿真器和控制器前，先在同一个终端里固定 DDS 动态库路径：
+
+```bash
+export UNITREE_DDS_LIB=/home/vi/lxy/b2+z1/b2z1_hw/external/unitree_sdk2/x86_64/lib
+export LD_LIBRARY_PATH=$UNITREE_DDS_LIB:$LD_LIBRARY_PATH
+```
+
+然后检查 `unitree_mujoco` 实际加载的是不是同一套库：
+
+```bash
+ldd ./unitree_mujoco | grep -E 'libddsc|libddscxx'
+```
+
+理想情况是两者都指向同一个目录。确认后再重新启动，例如：
+
+```bash
+cd simulate/build
+./unitree_mujoco -n lo -s src/assets/robots/unitree_b2z1/xmls/scene_b2z1_stairs.xml
+```

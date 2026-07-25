@@ -1,0 +1,109 @@
+joint_ids_map: [3,4,5,0,1,2,9,10,11,6,7,8,12,13,14,15,16,17]
+step_dt: 0.02
+stiffness: [46.1957,46.1957,103.9403,46.1957,46.1957,103.9403,46.1957,46.1957,103.9403,46.1957,46.1957,103.9403,60.0,60.0,60.0,60.0,60.0,60.0]
+damping:   [2.9409,2.9409,6.6170,2.9409,2.9409,6.6170,2.9409,2.9409,6.6170,2.9409,2.9409,6.6170,2.5,2.5,2.5,2.5,2.5,2.5]
+default_joint_pos: [0.1,0.8,-1.5, -0.1,0.8,-1.5, 0.1,1.0,-1.5, -0.1,1.0,-1.5, 0.0,0.5,-1.0, 0.0,0.0,0.0]
+
+commands:
+  twist:
+    ranges:
+      lin_vel_x: [0.10, 0.60]
+      lin_vel_y: [0.00, 0.00]
+      ang_vel_z: [-0.22, 0.22]
+  arm_pose:
+    # pose command in base frame: [x, y, z, qw, qx, qy, qz]
+    # default_command: [0.50, 0.00, 0.32, 1.00, 0.00, 0.00, 0.00]
+    default_command: [0.25, 0.00, 0.52, 1.00, 0.00, 0.00, 0.00]
+    # Keyboard [o] toggles: move_to_start -> trajectory -> return_to_start -> move_to_zero.
+    # start_pose: [0.50, 0.00, 0.32, 1.00, 0.00, 0.00, 0.00]
+    start_pose: [0.25, 0.00, 0.52, 1.00, 0.00, 0.00, 0.00]
+    move_to_start_duration: 5.0
+    policy_takeover_duration: 5.0
+    start_hold_duration: 0.5
+    return_to_start_duration: 3.0
+    return_hold_duration: 0.8
+    move_to_zero_duration: 5.0
+    zero_indices: [12,13,14,15,16,17]
+    zero_q: [0.0,0.5,-1.0,0.0,0.0,0.0]
+    joint_trajectory:
+      enabled: false
+      start_q: [0.0,0.0,0.0,0.0,0.0,0.0]
+      loop: true
+      waypoints:
+        - time_from_start: 2.0
+          positions: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        - time_from_start: 4.0
+          positions: [0.0, 1.0, -1.0, 0.0, 0.0, 0.0]
+        - time_from_start: 6.0
+          positions: [0.7853982, 1.0, -1.0, 0.0, 0.0, 0.0]
+        - time_from_start: 8.0
+          positions: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+    trajectory:
+      enabled: true
+      ramp_in_duration: 3.0
+      period: 10.0
+      dwell_time: 2.0
+      # Center is in the base frame and lifted above the front lidar.
+      # Format: [x, y, z, qw, qx, qy, qz]
+      # center: [0.50, 0.00, 0.32, 1.00, 0.00, 0.00, 0.00]
+      center: [0.25, 0.00, 0.52, 1.00, 0.00, 0.00, 0.00]
+      # xyz amplitude in meters. y is the left-right sweep; z lifts slightly during the transition.
+      amplitude: [0.00, 0.30, 0.03]
+      phase: 0.0
+
+actions:
+  JointPositionAction:
+    clip:
+      [[-0.80, 0.80], [-0.80, 1.80], [-2.70, -0.45],
+       [-0.80, 0.80], [-0.80, 1.80], [-2.70, -0.45],
+       [-0.80, 0.80], [-0.80, 1.80], [-2.70, -0.45],
+       [-0.80, 0.80], [-0.80, 1.80], [-2.70, -0.45],
+       [-2.50, 2.50], [0.02, 2.90], [-2.80, -0.02],
+       [-1.45, 1.45], [-1.30, 1.30], [-2.70, 2.70]]
+    joint_names: [.*]
+    scale: [0.25,0.25,0.25, 0.25,0.25,0.25, 0.25,0.25,0.25, 0.25,0.25,0.25, 0.28,0.26,0.26, 0.0,0.0,0.0]
+    offset: [0.1,0.8,-1.5, -0.1,0.8,-1.5, 0.1,1.0,-1.5, -0.1,1.0,-1.5, 0.0,0.5,-1.0, 0.0,0.0,0.0]
+    joint_ids: null
+
+observations:
+  base_ang_vel:
+    params: {}
+    clip: null
+    scale: [1.0, 1.0, 1.0]
+    history_length: 1
+  projected_gravity:
+    params: {}
+    clip: null
+    scale: [1.0, 1.0, 1.0]
+    history_length: 1
+  commands:
+    params: {command_name: twist}
+    clip: null
+    scale: [1.0, 1.0, 1.0]
+    history_length: 1
+  arm_pose_command:
+    params: {}
+    clip: null
+    scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    history_length: 1
+  gait_phase:
+    params: {period: 0.6, command_name: twist}
+    clip: null
+    scale: [1.0, 1.0]
+    history_length: 1
+  joint_pos_rel:
+    params: {}
+    clip: null
+    scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    history_length: 1
+  joint_vel_rel:
+    params: {}
+    clip: null
+    scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    history_length: 1
+  last_action:
+    params: {}
+    clip: [-10.0, 10.0]
+    scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    history_length: 1

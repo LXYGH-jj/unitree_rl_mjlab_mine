@@ -26,6 +26,7 @@
 #include <memory>
 #include <mutex>
 #include <new>
+#include <filesystem>
 #include <string>
 #include <thread>
 
@@ -33,6 +34,7 @@
 #include "simulate.h"
 #include "array_safety.h"
 #include "unitree_sdk2_bridge.h"
+#include "ros2_depth_camera_publisher.h"
 #include "param.h"
 
 #define MUJOCO_PLUGIN_DIR "mujoco_plugin"
@@ -85,6 +87,20 @@ public:
 };
 inline ElasticBand elastic_band;
 
+void ResetDataToInitialPose(mjModel* model, mjData* data)
+{
+  if (!model || !data) {
+    return;
+  }
+
+  if (model->nkey > 0) {
+    mj_resetDataKeyframe(model, data, 0);
+  } else {
+    mj_resetData(model, data);
+  }
+  mj_forward(model, data);
+}
+
 
 namespace
 {
@@ -104,6 +120,24 @@ namespace
   mjtNum *ctrlnoise = nullptr;
 
   using Seconds = std::chrono::duration<double>;
+
+  std::filesystem::path getCliConfigPath(int argc, char** argv)
+  {
+    for (int i = 1; i < argc; ++i)
+    {
+      const std::string arg = argv[i];
+      if ((arg == "--config" || arg == "-c") && i + 1 < argc)
+      {
+        return argv[i + 1];
+      }
+      const std::string prefix = "--config=";
+      if (arg.rfind(prefix, 0) == 0)
+      {
+        return arg.substr(prefix.size());
+      }
+    }
+    return {};
+  }
 
   //---------------------------------------- plugin handling -----------------------------------------
 
@@ -440,8 +474,8 @@ namespace
                 // update noise
                 ctrlnoise[i] = rate * ctrlnoise[i] + scale * mju_standardNormal(nullptr);
 
-                // apply noise
-                d->ctrl[i] = ctrlnoise[i];
+                // apply additive noise on top of the controller output
+                d->ctrl[i] += ctrlnoise[i];
               }
             }
 
@@ -464,6 +498,7 @@ namespace
               // run single step, let next iteration deal with timing
               mj_step(m, d);
               stepped = true;
+              sim.PublishPhysicsDepthIfNeeded();
             }
 
             // in-sync: step until ahead of cpu
@@ -505,6 +540,7 @@ namespace
                 // call mj_step
                 mj_step(m, d);
                 stepped = true;
+                sim.PublishPhysicsDepthIfNeeded();
 
                 // break if reset
                 if (d->time < prevSim)
@@ -548,7 +584,7 @@ void PhysicsThread(mj::Simulate *sim, const char *filename)
     if (d)
     {
       sim->Load(m, d, filename);
-      mj_forward(m, d);
+      ResetDataToInitialPose(m, d);
 
       // allocate ctrlnoise
       free(ctrlnoise);
@@ -594,9 +630,13 @@ void *UnitreeSdk2BridgeThread(void *arg)
   param::config.band_attached_link = 6 * body_id;
   
   std::unique_ptr<UnitreeSDK2BridgeBase> interface = nullptr;
-  if (m->nu > NUM_MOTOR_IDL_GO) {
+  if (param::config.robot.find("g1") != std::string::npos) {
+    std::cout << "[simulate] using G1-style Unitree SDK2 bridge for robot: "
+              << param::config.robot << std::endl;
     interface = std::make_unique<G1Bridge>(m, d);
   } else {
+    std::cout << "[simulate] using quadruped Unitree SDK2 bridge for robot: "
+              << param::config.robot << std::endl;
     interface = std::make_unique<Go2Bridge>(m, d);
   }
   interface->start();
@@ -620,6 +660,7 @@ __attribute__((used, visibility("default"))) extern "C" void _mj_rosettaError(co
 
 // user keyboard callback
 void user_key_cb(GLFWwindow* window, int key, int scancode, int act, int mods) {
+  keyboard_teleop_on_key(key, act);
   if (act==GLFW_PRESS)
   {
     if(param::config.enable_elastic_band == 1) {
@@ -632,8 +673,7 @@ void user_key_cb(GLFWwindow* window, int key, int scancode, int act, int mods) {
       }
     }
     if(key==GLFW_KEY_BACKSPACE) {
-      mj_resetData(m, d);
-      mj_forward(m, d);
+      ResetDataToInitialPose(m, d);
     }
   }
 }
@@ -672,7 +712,13 @@ int main(int argc, char **argv)
 
   // Load simulation configuration
   std::filesystem::path proj_dir = std::filesystem::path(getExecutableDir()).parent_path();
-  param::config.load_from_yaml(proj_dir / "config.yaml");
+  std::filesystem::path config_file = getCliConfigPath(argc, argv);
+  if (config_file.empty()) {
+    config_file = proj_dir / "config.yaml";
+  } else if (config_file.is_relative()) {
+    config_file = proj_dir / config_file;
+  }
+  param::config.load_from_yaml(config_file.string());
   param::helper(argc, argv);
   if(param::config.robot_scene.is_relative()) {
     param::config.robot_scene = proj_dir.parent_path() / param::config.robot_scene;
@@ -682,6 +728,34 @@ int main(int argc, char **argv)
   auto sim = std::make_unique<mj::Simulate>(
     std::make_unique<mj::GlfwAdapter>(),
     &cam, &opt, &pert, /* is_passive = */ false);
+  sim->ctrl_noise_std = param::config.ctrl_noise_std;
+  sim->ctrl_noise_rate = param::config.ctrl_noise_rate;
+  sim->depth_preview_enabled = param::config.depth_preview_enabled;
+  sim->depth_preview_camera_name = param::config.depth_preview_camera_name;
+  sim->depth_preview_width = param::config.depth_preview_width;
+  sim->depth_preview_height = param::config.depth_preview_height;
+  sim->depth_preview_update_every = param::config.depth_preview_update_every;
+  sim->depth_preview_print_stats = param::config.depth_preview_print_stats;
+  sim->depth_preview_source = param::config.depth_preview_source;
+  sim->depth_preview_raycast_geom_groups = param::config.depth_preview_raycast_geom_groups;
+  sim->depth_publish_mode = param::config.depth_camera_publisher_mode;
+  sim->depth_publish_dt = param::config.depth_camera_publisher_publish_dt;
+  sim->depth_opengl_far_to_zero_enabled =
+      param::config.depth_camera_publisher_opengl_far_to_zero_enabled;
+  sim->depth_opengl_far_to_zero_threshold =
+      param::config.depth_camera_publisher_opengl_far_to_zero_threshold;
+  std::shared_ptr<Ros2DepthCameraPublisher> depth_camera_publisher;
+  if (param::config.depth_camera_publisher_enabled == 1) {
+    depth_camera_publisher = std::make_shared<Ros2DepthCameraPublisher>(
+        param::config.depth_camera_publisher_node_name,
+        param::config.depth_camera_publisher_topic,
+        param::config.depth_camera_publisher_print_every);
+    sim->depth_publish_every = param::config.depth_camera_publisher_publish_every;
+    sim->depth_publish_callback =
+        [depth_camera_publisher](const float* depth_meters, int width, int height, double sim_time) {
+          depth_camera_publisher->publish(depth_meters, width, height, sim_time);
+        };
+  }
 
   std::thread unitree_thread(UnitreeSdk2BridgeThread, nullptr);
 
