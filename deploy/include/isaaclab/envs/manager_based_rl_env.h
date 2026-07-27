@@ -28,6 +28,44 @@ class ActionManager;
 class ManagerBasedRLEnv
 {
 public:
+    struct DebugTelemetry
+    {
+        float origin_x = 0.0f;
+        float origin_y = 0.0f;
+        float progress_x = 0.0f;
+        float robot_yaw = 0.0f;
+        int waypoint_idx = -1;
+        int reach_timer = -1;
+        float waypoint_state_x = 0.0f;
+        float waypoint_state_y = 0.0f;
+        float target_x = 0.0f;
+        float target_y = 0.0f;
+        float next_x = 0.0f;
+        float next_y = 0.0f;
+        float dist_to_target = 0.0f;
+        float dist_to_next = 0.0f;
+        float waypoint_delta_yaw = 0.0f;
+        float waypoint_delta_next_yaw = 0.0f;
+        double depth_stamp = 0.0;
+        double depth_dt_from_last = 0.0;
+        float raw_depth_min = 0.0f;
+        float raw_depth_max = 0.0f;
+        float raw_depth_mean = 0.0f;
+        float raw_depth_finite = 0.0f;
+        float raw_depth_invalid = 0.0f;
+        float raw_depth_zero = 0.0f;
+        float raw_depth_over20 = 0.0f;
+        float processed_depth_min = 0.0f;
+        float processed_depth_max = 0.0f;
+        float processed_depth_mean = 0.0f;
+        float processed_depth_finite = 0.0f;
+        float processed_depth_invalid = 0.0f;
+        float processed_depth_zero = 0.0f;
+        float processed_depth_over20 = 0.0f;
+        bool depth_repeated = false;
+        bool depth_valid = false;
+    };
+
     // Constructor
     ManagerBasedRLEnv(YAML::Node cfg, std::shared_ptr<Articulation> robot_)
     :cfg(cfg), robot(std::move(robot_))
@@ -104,6 +142,7 @@ public:
     std::unique_ptr<Algorithms> alg;
     long episode_length = 0;
     float global_phase = 0.0f;
+    DebugTelemetry debug_telemetry;
 
 private:
     void init_debug_csv()
@@ -162,8 +201,62 @@ private:
         {
             debug_csv_stream_ << ",processed_action_" << i;
         }
+        write_debug_telemetry_header();
         debug_csv_stream_ << "\n";
         debug_csv_header_written_ = true;
+    }
+
+    void write_debug_telemetry_header()
+    {
+        debug_csv_stream_
+            << ",debug_sim_time"
+            << ",debug_step_dt"
+            << ",debug_origin_x"
+            << ",debug_origin_y"
+            << ",debug_progress_x"
+            << ",debug_root_pos_x"
+            << ",debug_root_pos_y"
+            << ",debug_root_pos_z"
+            << ",debug_root_lin_vel_b_x"
+            << ",debug_root_lin_vel_b_y"
+            << ",debug_root_lin_vel_b_z"
+            << ",debug_root_ang_vel_b_x"
+            << ",debug_root_ang_vel_b_y"
+            << ",debug_root_ang_vel_b_z"
+            << ",debug_projected_gravity_x"
+            << ",debug_projected_gravity_y"
+            << ",debug_projected_gravity_z"
+            << ",debug_robot_yaw"
+            << ",debug_waypoint_idx"
+            << ",debug_reach_timer"
+            << ",debug_waypoint_state_x"
+            << ",debug_waypoint_state_y"
+            << ",debug_target_x"
+            << ",debug_target_y"
+            << ",debug_next_x"
+            << ",debug_next_y"
+            << ",debug_dist_to_target"
+            << ",debug_dist_to_next"
+            << ",debug_waypoint_delta_yaw"
+            << ",debug_waypoint_delta_next_yaw"
+            << ",debug_depth_stamp"
+            << ",debug_depth_dt_from_last"
+            << ",debug_depth_repeated"
+            << ",debug_depth_valid"
+            << ",debug_raw_depth_min"
+            << ",debug_raw_depth_max"
+            << ",debug_raw_depth_mean"
+            << ",debug_raw_depth_finite"
+            << ",debug_raw_depth_invalid"
+            << ",debug_raw_depth_zero"
+            << ",debug_raw_depth_over20"
+            << ",debug_processed_depth_min"
+            << ",debug_processed_depth_max"
+            << ",debug_processed_depth_mean"
+            << ",debug_processed_depth_finite"
+            << ",debug_processed_depth_invalid"
+            << ",debug_processed_depth_zero"
+            << ",debug_processed_depth_over20";
     }
 
     static std::string summarize_vector(const std::vector<float>& values)
@@ -230,8 +323,63 @@ private:
         {
             debug_csv_stream_ << "," << std::fixed << std::setprecision(9) << value;
         }
+        write_debug_telemetry_row();
         debug_csv_stream_ << "\n";
         debug_csv_stream_.flush();
+    }
+
+    void write_debug_telemetry_row()
+    {
+        const auto& t = debug_telemetry;
+        debug_csv_stream_
+            << "," << std::fixed << std::setprecision(9) << episode_length * step_dt
+            << "," << step_dt
+            << "," << t.origin_x
+            << "," << t.origin_y
+            << "," << t.progress_x
+            << "," << robot->data.root_pos_w.x()
+            << "," << robot->data.root_pos_w.y()
+            << "," << robot->data.root_pos_w.z()
+            << "," << robot->data.root_lin_vel_b.x()
+            << "," << robot->data.root_lin_vel_b.y()
+            << "," << robot->data.root_lin_vel_b.z()
+            << "," << robot->data.root_ang_vel_b.x()
+            << "," << robot->data.root_ang_vel_b.y()
+            << "," << robot->data.root_ang_vel_b.z()
+            << "," << robot->data.projected_gravity_b.x()
+            << "," << robot->data.projected_gravity_b.y()
+            << "," << robot->data.projected_gravity_b.z()
+            << "," << t.robot_yaw
+            << "," << t.waypoint_idx
+            << "," << t.reach_timer
+            << "," << t.waypoint_state_x
+            << "," << t.waypoint_state_y
+            << "," << t.target_x
+            << "," << t.target_y
+            << "," << t.next_x
+            << "," << t.next_y
+            << "," << t.dist_to_target
+            << "," << t.dist_to_next
+            << "," << t.waypoint_delta_yaw
+            << "," << t.waypoint_delta_next_yaw
+            << "," << t.depth_stamp
+            << "," << t.depth_dt_from_last
+            << "," << (t.depth_repeated ? 1.0f : 0.0f)
+            << "," << (t.depth_valid ? 1.0f : 0.0f)
+            << "," << t.raw_depth_min
+            << "," << t.raw_depth_max
+            << "," << t.raw_depth_mean
+            << "," << t.raw_depth_finite
+            << "," << t.raw_depth_invalid
+            << "," << t.raw_depth_zero
+            << "," << t.raw_depth_over20
+            << "," << t.processed_depth_min
+            << "," << t.processed_depth_max
+            << "," << t.processed_depth_mean
+            << "," << t.processed_depth_finite
+            << "," << t.processed_depth_invalid
+            << "," << t.processed_depth_zero
+            << "," << t.processed_depth_over20;
     }
 
     void maybe_log_debug(const std::unordered_map<std::string, std::vector<float>>& obs,

@@ -17,10 +17,10 @@
     <body name="terrain">
       <!-- Match scene_go2_parkour_multi_from_gaps.xml total x span: -45m to 45m. -->
       <geom name="pit_floor" type="box" pos="0 0 -0.325" size="45 2 0.025" material="pit_floor" group="0" friction="0.8 0.02 0.01" />
-      <geom name="side_ground_pos_y" type="box" pos="0 4.5 -0.25" size="50 2.5 0.25" rgba="0.2 0.2 0.2 1" group="0" friction="0.8 0.02 0.01" />
-      <geom name="side_ground_neg_y" type="box" pos="0 -4.5 -0.25" size="50 2.5 0.25" rgba="0.2 0.2 0.2 1" group="0" friction="0.8 0.02 0.01" />
-      <geom name="end_ground_neg_x" type="box" pos="-47.5 0 -0.25" size="2.5 2 0.25" rgba="0.2 0.2 0.2 1" group="0" friction="0.8 0.02 0.01" />
-      <geom name="end_ground_pos_x" type="box" pos="47.5 0 -0.25" size="2.5 2 0.25" rgba="0.2 0.2 0.2 1" group="0" friction="0.8 0.02 0.01" />
+      <geom name="side_ground_pos_y" type="box" pos="0 4.5 -0.25" size="50 2.5 1.25" rgba="0.2 0.2 0.2 1" group="0" friction="0.8 0.02 0.01" />
+      <geom name="side_ground_neg_y" type="box" pos="0 -4.5 -0.25" size="50 2.5 1.25" rgba="0.2 0.2 0.2 1" group="0" friction="0.8 0.02 0.01" />
+      <geom name="end_ground_neg_x" type="box" pos="-47.5 0 -0.25" size="2.5 2 1.25" rgba="0.2 0.2 0.2 1" group="0" friction="0.8 0.02 0.01" />
+      <geom name="end_ground_pos_x" type="box" pos="47.5 0 -0.25" size="2.5 2 1.25" rgba="0.2 0.2 0.2 1" group="0" friction="0.8 0.02 0.01" />
 
       <!-- The active row starts at x=27 and ends at x=45, matching the exported hfield tile. -->
       <geom name="gap_start_platform" type="box" pos="28.25 0 -0.15" size="1.25 0.75 0.05" material="parkour_ground" group="0" friction="1.0 0.05 0.05" />

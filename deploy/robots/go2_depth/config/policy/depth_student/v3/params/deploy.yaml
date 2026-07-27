@@ -118,7 +118,7 @@ observations:
           # dir: /tmp/go2_depth_camera_debug_file
           # dir: /tmp/go2_depth_camera_debug_zero
           dir: /tmp/go2_depth_camera_debug_ros2_policy_v2
-          save_every: 1
+          save_every: 20
           save_raw: true
           save_processed: true
           print_stats: false

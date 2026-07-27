@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cmath>
+#include <iostream>
 #include <utility>
 #include <vector>
 
@@ -38,6 +39,23 @@ inline float yaw_from_quat(const Eigen::Quaternionf& q)
         2.0f * (q.w() * q.z() + q.x() * q.y()),
         1.0f - 2.0f * (q.y() * q.y() + q.z() * q.z())
     );
+}
+
+inline std::pair<size_t, size_t> depth_zero_over20_counts(const std::vector<float>& values)
+{
+    size_t zero_count = 0;
+    size_t over20_count = 0;
+    for (const float value : values) {
+        if (std::isfinite(value)) {
+            if (value == 0.0f) {
+                ++zero_count;
+            }
+            if (value > 20.0f) {
+                ++over20_count;
+            }
+        }
+    }
+    return {zero_count, over20_count};
 }
 
 inline std::pair<float, float> depth_student_waypoint_yaws(
@@ -144,12 +162,40 @@ inline std::pair<float, float> depth_student_waypoint_yaws(
         }
     }
 
-    auto goal_yaw = [&](const int idx) {
+    auto clamped_goal = [&](const int idx) -> const std::pair<float, float>& {
         const int clamped_idx = std::clamp(idx, 0, static_cast<int>(points.size()) - 1);
-        const auto& goal = points[clamped_idx];
+        return points[clamped_idx];
+    };
+    auto goal_yaw = [&](const int idx) {
+        const auto& goal = clamped_goal(idx);
         return wrap_to_pi(std::atan2(goal.second - state.y, goal.first - state.x) - yaw);
     };
-    return {goal_yaw(state.index), goal_yaw(state.index + 1)};
+    const float delta_yaw = goal_yaw(state.index);
+    const float delta_next_yaw = goal_yaw(state.index + 1);
+
+    const auto& target = clamped_goal(state.index);
+    const auto& next_target = clamped_goal(state.index + 1);
+    const float target_dx = target.first - state.x;
+    const float target_dy = target.second - state.y;
+    const float next_dx = next_target.first - state.x;
+    const float next_dy = next_target.second - state.y;
+    env->debug_telemetry.origin_x = origin_x;
+    env->debug_telemetry.origin_y = origin_y;
+    env->debug_telemetry.progress_x = state.x;
+    env->debug_telemetry.robot_yaw = yaw;
+    env->debug_telemetry.waypoint_idx = state.index;
+    env->debug_telemetry.reach_timer = state.reach_timer;
+    env->debug_telemetry.waypoint_state_x = state.x;
+    env->debug_telemetry.waypoint_state_y = state.y;
+    env->debug_telemetry.target_x = target.first;
+    env->debug_telemetry.target_y = target.second;
+    env->debug_telemetry.next_x = next_target.first;
+    env->debug_telemetry.next_y = next_target.second;
+    env->debug_telemetry.dist_to_target = std::sqrt(target_dx * target_dx + target_dy * target_dy);
+    env->debug_telemetry.dist_to_next = std::sqrt(next_dx * next_dx + next_dy * next_dy);
+    env->debug_telemetry.waypoint_delta_yaw = delta_yaw;
+    env->debug_telemetry.waypoint_delta_next_yaw = delta_next_yaw;
+    return {delta_yaw, delta_next_yaw};
 }
 
 inline std::pair<float, float> depth_student_command_yaws(
@@ -674,6 +720,16 @@ REGISTER_OBSERVATION(depth_camera_observation)
     const bool has_frame = isaaclab::sensors::get_depth_frame_from_provider(params, frame);
     if (!has_frame || !frame.valid) {
         auto fallback = isaaclab::sensors::fallback_depth_output(preprocess_cfg);
+        const auto processed_stats = isaaclab::sensors::compute_depth_stats(fallback);
+        const auto processed_counts = isaaclab::mdp::depth_zero_over20_counts(fallback);
+        env->debug_telemetry.depth_valid = false;
+        env->debug_telemetry.processed_depth_min = processed_stats.min;
+        env->debug_telemetry.processed_depth_max = processed_stats.max;
+        env->debug_telemetry.processed_depth_mean = processed_stats.mean;
+        env->debug_telemetry.processed_depth_finite = static_cast<float>(processed_stats.finite_count);
+        env->debug_telemetry.processed_depth_invalid = static_cast<float>(processed_stats.invalid_count);
+        env->debug_telemetry.processed_depth_zero = static_cast<float>(processed_counts.first);
+        env->debug_telemetry.processed_depth_over20 = static_cast<float>(processed_counts.second);
         isaaclab::sensors::maybe_debug_depth(frame, fallback, preprocess_cfg, debug_cfg);
         return fallback;
     }
@@ -681,18 +737,43 @@ REGISTER_OBSERVATION(depth_camera_observation)
     static double last_stamp = -1.0;
     static int step_count = 0;
 
+    const double dt_from_last = last_stamp >= 0.0 ? frame.timestamp - last_stamp : 0.0;
+    const bool repeated = frame.timestamp == last_stamp;
+
     if (++step_count % 20 == 0) {
         std::cout
             << "[depth_stamp] step=" << env->episode_length
             << " stamp=" << frame.timestamp
-            << " dt_from_last=" << (last_stamp >= 0.0 ? frame.timestamp - last_stamp : 0.0)
-            << " repeated=" << (frame.timestamp == last_stamp)
+            << " dt_from_last=" << dt_from_last
+            << " repeated=" << repeated
             << std::endl;
     }
 
     last_stamp = frame.timestamp;
 
     auto processed = isaaclab::sensors::preprocess_depth_frame(frame, preprocess_cfg);
+    const auto raw_stats = isaaclab::sensors::compute_depth_stats(frame.data);
+    const auto raw_counts = isaaclab::mdp::depth_zero_over20_counts(frame.data);
+    const auto processed_stats = isaaclab::sensors::compute_depth_stats(processed);
+    const auto processed_counts = isaaclab::mdp::depth_zero_over20_counts(processed);
+    env->debug_telemetry.depth_valid = frame.valid;
+    env->debug_telemetry.depth_stamp = frame.timestamp;
+    env->debug_telemetry.depth_dt_from_last = dt_from_last;
+    env->debug_telemetry.depth_repeated = repeated;
+    env->debug_telemetry.raw_depth_min = raw_stats.min;
+    env->debug_telemetry.raw_depth_max = raw_stats.max;
+    env->debug_telemetry.raw_depth_mean = raw_stats.mean;
+    env->debug_telemetry.raw_depth_finite = static_cast<float>(raw_stats.finite_count);
+    env->debug_telemetry.raw_depth_invalid = static_cast<float>(raw_stats.invalid_count);
+    env->debug_telemetry.raw_depth_zero = static_cast<float>(raw_counts.first);
+    env->debug_telemetry.raw_depth_over20 = static_cast<float>(raw_counts.second);
+    env->debug_telemetry.processed_depth_min = processed_stats.min;
+    env->debug_telemetry.processed_depth_max = processed_stats.max;
+    env->debug_telemetry.processed_depth_mean = processed_stats.mean;
+    env->debug_telemetry.processed_depth_finite = static_cast<float>(processed_stats.finite_count);
+    env->debug_telemetry.processed_depth_invalid = static_cast<float>(processed_stats.invalid_count);
+    env->debug_telemetry.processed_depth_zero = static_cast<float>(processed_counts.first);
+    env->debug_telemetry.processed_depth_over20 = static_cast<float>(processed_counts.second);
     isaaclab::sensors::maybe_debug_depth(frame, processed, preprocess_cfg, debug_cfg);
     return processed;
 }
