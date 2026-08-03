@@ -3,9 +3,11 @@
 
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <iostream>
+#include <random>
 #include <utility>
 #include <vector>
 
@@ -56,6 +58,111 @@ inline std::pair<size_t, size_t> depth_zero_over20_counts(const std::vector<floa
         }
     }
     return {zero_count, over20_count};
+}
+
+struct ProprioPolicyInputNoiseConfig
+{
+    bool enabled = false;
+    unsigned int seed = 0;
+    float uniform = 0.0f;
+    float ang_vel_uniform = 0.0f;
+    float gravity_uniform = 0.0f;
+    float yaw_uniform = 0.0f;
+    float command_uniform = 0.0f;
+    float joint_pos_uniform = 0.0f;
+    float joint_vel_uniform = 0.0f;
+    float action_uniform = 0.0f;
+    float contact_flip_prob = 0.0f;
+};
+
+inline ProprioPolicyInputNoiseConfig proprio_policy_input_noise_config_from_yaml(YAML::Node params)
+{
+    ProprioPolicyInputNoiseConfig cfg;
+    if (!params || !params["policy_input_noise"] || params["policy_input_noise"].IsNull()) {
+        return cfg;
+    }
+
+    const auto noise = params["policy_input_noise"];
+    if (noise["enabled"] && !noise["enabled"].IsNull()) cfg.enabled = noise["enabled"].as<bool>();
+    if (noise["seed"] && !noise["seed"].IsNull()) cfg.seed = noise["seed"].as<unsigned int>();
+
+    const auto proprio = noise["proprio"] && !noise["proprio"].IsNull() ? noise["proprio"] : noise;
+    if (proprio["uniform"] && !proprio["uniform"].IsNull()) {
+        cfg.uniform = std::max(0.0f, proprio["uniform"].as<float>());
+    }
+    if (proprio["ang_vel_uniform"] && !proprio["ang_vel_uniform"].IsNull()) {
+        cfg.ang_vel_uniform = std::max(0.0f, proprio["ang_vel_uniform"].as<float>());
+    }
+    if (proprio["gravity_uniform"] && !proprio["gravity_uniform"].IsNull()) {
+        cfg.gravity_uniform = std::max(0.0f, proprio["gravity_uniform"].as<float>());
+    }
+    if (proprio["yaw_uniform"] && !proprio["yaw_uniform"].IsNull()) {
+        cfg.yaw_uniform = std::max(0.0f, proprio["yaw_uniform"].as<float>());
+    }
+    if (proprio["command_uniform"] && !proprio["command_uniform"].IsNull()) {
+        cfg.command_uniform = std::max(0.0f, proprio["command_uniform"].as<float>());
+    }
+    if (proprio["joint_pos_uniform"] && !proprio["joint_pos_uniform"].IsNull()) {
+        cfg.joint_pos_uniform = std::max(0.0f, proprio["joint_pos_uniform"].as<float>());
+    }
+    if (proprio["joint_vel_uniform"] && !proprio["joint_vel_uniform"].IsNull()) {
+        cfg.joint_vel_uniform = std::max(0.0f, proprio["joint_vel_uniform"].as<float>());
+    }
+    if (proprio["action_uniform"] && !proprio["action_uniform"].IsNull()) {
+        cfg.action_uniform = std::max(0.0f, proprio["action_uniform"].as<float>());
+    }
+    if (proprio["contact_flip_prob"] && !proprio["contact_flip_prob"].IsNull()) {
+        cfg.contact_flip_prob = std::clamp(proprio["contact_flip_prob"].as<float>(), 0.0f, 1.0f);
+    }
+    return cfg;
+}
+
+inline void add_uniform_noise_to_range(
+    std::vector<float>& values,
+    const size_t begin,
+    const size_t end,
+    const float half_range,
+    std::mt19937& rng)
+{
+    if (half_range <= 0.0f || begin >= values.size()) {
+        return;
+    }
+    std::uniform_real_distribution<float> dist(-half_range, half_range);
+    const size_t clipped_end = std::min(end, values.size());
+    for (size_t i = begin; i < clipped_end; ++i) {
+        values[i] += dist(rng);
+    }
+}
+
+inline void apply_proprio_policy_input_noise(
+    std::vector<float>& proprio,
+    const ProprioPolicyInputNoiseConfig& noise_cfg)
+{
+    if (!noise_cfg.enabled) {
+        return;
+    }
+
+    static std::mt19937 rng(noise_cfg.seed);
+    add_uniform_noise_to_range(proprio, 0, 3, noise_cfg.uniform + noise_cfg.ang_vel_uniform, rng);
+    add_uniform_noise_to_range(proprio, 3, 5, noise_cfg.uniform + noise_cfg.gravity_uniform, rng);
+    add_uniform_noise_to_range(proprio, 5, 8, noise_cfg.uniform + noise_cfg.yaw_uniform, rng);
+    add_uniform_noise_to_range(proprio, 8, 11, noise_cfg.uniform + noise_cfg.command_uniform, rng);
+    add_uniform_noise_to_range(proprio, 13, 25, noise_cfg.uniform + noise_cfg.joint_pos_uniform, rng);
+    add_uniform_noise_to_range(proprio, 25, 37, noise_cfg.uniform + noise_cfg.joint_vel_uniform, rng);
+    add_uniform_noise_to_range(proprio, 37, 49, noise_cfg.uniform + noise_cfg.action_uniform, rng);
+
+    if (noise_cfg.contact_flip_prob > 0.0f) {
+        std::uniform_real_distribution<float> unit_dist(0.0f, 1.0f);
+        for (size_t i = 49; i < 53 && i < proprio.size(); ++i) {
+            if (unit_dist(rng) < noise_cfg.contact_flip_prob) {
+                proprio[i] = -proprio[i];
+            }
+        }
+    }
+
+    for (auto& value : proprio) {
+        value = std::isfinite(value) ? std::clamp(value, -10.0f, 10.0f) : 0.0f;
+    }
 }
 
 inline std::pair<float, float> depth_student_waypoint_yaws(
@@ -681,6 +788,10 @@ REGISTER_OBSERVATION(depth_student_actor_observation)
             x = 0.0f;
         }
     }
+    apply_proprio_policy_input_noise(
+        proprio,
+        proprio_policy_input_noise_config_from_yaml(params)
+    );
 
     auto history_proprio = proprio;
     history_proprio[6] = 0.0f;
@@ -752,6 +863,11 @@ REGISTER_OBSERVATION(depth_camera_observation)
     last_stamp = frame.timestamp;
 
     auto processed = isaaclab::sensors::preprocess_depth_frame(frame, preprocess_cfg);
+    isaaclab::sensors::apply_depth_policy_input_noise(
+        processed,
+        isaaclab::sensors::depth_policy_input_noise_config_from_yaml(params),
+        preprocess_cfg
+    );
     const auto raw_stats = isaaclab::sensors::compute_depth_stats(frame.data);
     const auto raw_counts = isaaclab::mdp::depth_zero_over20_counts(frame.data);
     const auto processed_stats = isaaclab::sensors::compute_depth_stats(processed);

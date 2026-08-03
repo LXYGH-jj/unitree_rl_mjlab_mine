@@ -1,13 +1,14 @@
 robot: "go2"
-robot_scene: "src/assets/robots/unitree_go2/xmls/scene_go2_parkour_multi.xml"
+# robot_scene: "src/assets/robots/unitree_go2/xmls/scene_go2_parkour_multi.xml"
 # robot_scene: "src/assets/robots/unitree_go2/xmls/scene_go2_parkour_multi_from_gaps.xml"
 # robot_scene: "src/assets/robots/unitree_go2/xmls/scene_go2_parkour_multi_from_stairs.xml"
+robot_scene: "src/assets/robots/unitree_go2/xmls/scene_go2_room_stairs.xml"
 
 
 domain_id: 0  # Domain id
 interface: "lo" # Interface
 
-use_joystick: 0 # Feed /dev/input/js0 axes into LowState joystick; keyboard shortcuts still overlay in deploy.
+use_joystick: 1 # Feed /dev/input/js0 axes into LowState joystick; keyboard shortcuts still overlay in deploy.
 joystick_type: "xbox" # support "xbox", "switch", and "keyboard" layouts
 joystick_device: "/dev/input/js0" # Device path
 joystick_bits: 16 # Some game controllers may only have 8-bit accuracy
@@ -32,6 +33,7 @@ depth_preview:
   update_every: 2
   print_stats: 1
   source: "raycast" # "raycast" matches training raw depth semantics; "opengl" uses z-buffer.
+  # raycast_geom_groups: [0, 1]
   raycast_geom_groups: [0]
 
 depth_camera_publisher:

@@ -1,0 +1,167 @@
+policy_runner: depth_student_onnx
+
+joint_ids_map: [3,4,5,0,1,2,9,10,11,6,7,8,]
+step_dt: 0.02
+stiffness: [40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40]
+damping:   [ 1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1]
+# stiffness: [20, 20, 40, 20, 20, 40, 20, 20, 40, 20, 20, 40]
+# damping:   [ 1,  1,  2,  1,  1,  2,  1,  1,  2,  1,  1,  2]
+default_joint_pos: [-0.1,0.9,-1.8, 0.1,0.9,-1.8, -0.1,0.9,-1.8, 0.1,0.9,-1.8]
+
+commands:
+  base_velocity:
+    ranges:
+      lin_vel_x: [0.3, 0.3]
+      lin_vel_y: [0.0, 0.0]
+      ang_vel_z: [0.0, 0.0]
+      heading: null
+
+actions:
+  JointPositionAction:
+    clip: null
+    raw_clip: [-4.8, 4.8]
+    joint_names: [.*]
+    # astro_parkour ReferenceParkourJointPositionAction maps policy action
+    # order to simulator/deploy joint order before scale+offset.
+    policy_to_sim_reindex: [3,4,5,0,1,2,9,10,11,6,7,8]
+    scale: [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]
+    offset: [-0.1,0.9,-1.8, 0.1,0.9,-1.8, -0.1,0.9,-1.8, 0.1,0.9,-1.8]
+    joint_ids: null
+
+# Simulation/debug safety: set to 0.0 to match astro_parkour play action timing.
+command_safety:
+  max_target_delta_per_tick: 0.05
+
+# Depth-student ONNX input scaffold:
+# - obs is float[753] = 53-dim parkour_proprio + 170 zero placeholder + 10 * 53 proprio history.
+# - the 53-dim proprio layout follows astro_parkour.mdp.parkour_proprio.
+# - only forward speed is used as a command term; lateral/yaw command slots are zeros.
+# - foot contacts come from Go2 foot force readings and are thresholded to contact flags.
+# - depth uses depth_camera_observation. provider=null keeps the current safe zero fallback
+#   until a real camera provider is wired.
+# This is closer to the training interface, but still needs real depth before robot stair deployment.
+observations:
+  obs:
+    depth_student_actor_observation:
+      params:
+        command_name: base_velocity
+        flat_terrain: false
+        foot_force_source: foot_force_est
+        foot_force_threshold: 20.0
+        foot_force_bias: [0.0, 0.0, 0.0, 0.0]
+        foot_force_use_abs: false
+        policy_input_noise:
+          enabled: true
+          seed: 1
+          proprio:
+            uniform: 0.0
+            ang_vel_uniform: 0.05
+            gravity_uniform: 0.02
+            yaw_uniform: 0.0
+            command_uniform: 0.0
+            joint_pos_uniform: 0.01
+            joint_vel_uniform: 0.075
+            action_uniform: 0.0
+            contact_flip_prob: 0.01
+        yaw_debug:
+          enabled: true
+          every_n_steps: 20
+        # Match astro_parkour.mdp.parkour_proprio reindex helpers.
+        joint_reindex: [3,4,5,0,1,2,9,10,11,6,7,8]
+        foot_reindex: [1,0,3,2]
+        yaw_input:
+          enabled: true
+          source: joystick_rx
+          scale: 0.1
+          next_scale: 0.1
+          deadzone: 0.05
+        waypoints:
+          enabled: false
+          use_root_pos_w: true
+          # Original parkour multi terrain path:
+          # origin: [28.0, 0.0]
+          origin: [-6.0, 0.0]
+          reach_radius: 0.2
+          reach_delay: 0.1
+          forward_speed: 0.3
+          # Original points are relative to the selected terrain spawn at world x=28.
+          # points:
+          #   - [0.5, 0.0]
+          #   - [1.55, 0.0]
+          #   - [4.4, 0.0]
+          #   - [7.8, 0.0]
+          #   - [10.75, 0.0]
+          #   - [14.0, 0.0]
+          #   - [16.75, 0.0]
+          #   - [16.75, 0.0]
+          # Points are relative to the room spawn at world x=-6.
+          points:
+            - [1.5, 0.0]
+            - [3.5, 0.0]
+            - [4.7, 0.0]
+            - [5.9, 0.0]
+            - [7.2, 0.0]
+            - [9.0, 0.0]
+      clip: null
+      scale: null
+      history_length: 1
+  depth:
+    depth_camera_observation:
+      params:
+        # provider: file
+        # source: /home/vi/lxy/日志/0630/go2_depth_camera_debug_file/raw_depth_1.txt
+        provider: ros2
+        # provider: null
+        source: /go2_depth/sim/depth/image_raw
+        input_unit: m
+        ros2_timeout_ms: 1000
+        ros2_node_name: go2_depth_policy_subscriber
+        preprocess_mode: astro_play
+        # input_unit: mm
+        # input_width: 640
+        # input_height: 480
+        output_height: 58
+        output_width: 87
+        near_clip: 0.0
+        far_clip: 2.0
+        invert: true
+        centered: false
+        resize_mode: bilinear
+        zero_is_invalid: false
+        invalid_fill: far
+        max_valid_depth: 2.0
+        over_max_fill: far
+        fallback: zero
+        policy_input_noise:
+          enabled: true
+          require_sim_source: true
+          seed: 2
+          depth:
+            uniform: 0.02
+            gaussian_std: 0.0
+            bias: 0.0
+            dropout_prob: 0.01
+            dropout_value: 0.0
+
+        # debug_near_m: 0.25
+        # debug_far_m: 2.0
+
+        debug:
+          enabled: true
+          # dir: /tmp/go2_depth_camera_debug_file
+          # dir: /tmp/go2_depth_camera_debug_zero
+          dir: /tmp/go2_depth_camera_debug_ros2_policy_v2
+          save_every: 20
+          save_raw: true
+          save_processed: true
+          print_stats: false
+      clip: null
+      scale: null
+      history_length: 1
+
+debug_logger:
+  enabled: true
+  print_to_console: false
+  write_csv: true
+  every_n_steps: 1
+  csv_path: /tmp/go2_depth_velocity_debug_v2.csv

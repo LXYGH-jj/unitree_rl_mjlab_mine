@@ -172,6 +172,13 @@ mkdir build && cd build
 cmake .. && make
 ```
 
+ROS2编译
+```bash
+cmake -S . -B build_ros2 -DENABLE_ROS2_DEPTH_PROVIDER=ON
+cmake --build build_ros2 -j8
+```
+
+
 #### 4.5 部署
 
 ## 4.5.1 仿真部署

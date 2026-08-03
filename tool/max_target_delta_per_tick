@@ -1,0 +1,166 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+python3 - "$@" <<'PY'
+import argparse
+import csv
+import math
+from pathlib import Path
+
+
+def percentile(values: list[float], q: float) -> float:
+    if not values:
+        return 0.0
+    if len(values) == 1:
+        return values[0]
+    ordered = sorted(values)
+    pos = (len(ordered) - 1) * q
+    lo = math.floor(pos)
+    hi = math.ceil(pos)
+    if lo == hi:
+        return ordered[lo]
+    weight = pos - lo
+    return ordered[lo] * (1.0 - weight) + ordered[hi] * weight
+
+
+def row_time(row: dict[str, str], fallback_dt: float) -> float:
+    sim_time = safe_float(row.get("debug_sim_time"))
+    if sim_time is not None:
+        return sim_time
+    step = safe_float(row.get("step"))
+    if step is None:
+        raise ValueError("row has no valid step/debug_sim_time")
+    return step * fallback_dt
+
+
+def safe_float(value: str | None) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+parser = argparse.ArgumentParser(
+    description=(
+        "Estimate command_safety.max_target_delta_per_tick from stable-stage "
+        "processed_action frame-to-frame deltas."
+    )
+)
+parser.add_argument(
+    "csv_path",
+    nargs="?",
+    default="/tmp/go2_depth_velocity_debug_v2.csv",
+    help="Deploy debug CSV path.",
+)
+parser.add_argument(
+    "--skip-sec",
+    type=float,
+    default=1.0,
+    help="Ignore samples before this simulation time to remove startup transients.",
+)
+parser.add_argument(
+    "--dt",
+    type=float,
+    default=0.02,
+    help="Fallback policy step time when debug_sim_time is unavailable.",
+)
+parser.add_argument(
+    "--percentile",
+    type=float,
+    default=99.0,
+    help="Stable-stage percentile to report, in [0, 100].",
+)
+parser.add_argument(
+    "--multiplier",
+    type=float,
+    default=1.2,
+    help="Safety margin multiplier for suggested values.",
+)
+parser.add_argument(
+    "--actions",
+    type=int,
+    default=12,
+    help="Number of processed_action columns to analyze.",
+)
+args = parser.parse_args()
+
+csv_path = Path(args.csv_path)
+if not csv_path.exists():
+    raise SystemExit(f"CSV not found: {csv_path}")
+if not 0.0 <= args.percentile <= 100.0:
+    raise SystemExit("--percentile must be in [0, 100]")
+if args.skip_sec < 0.0:
+    raise SystemExit("--skip-sec must be non-negative")
+if args.dt <= 0.0:
+    raise SystemExit("--dt must be positive")
+if args.multiplier <= 0.0:
+    raise SystemExit("--multiplier must be positive")
+if args.actions <= 0:
+    raise SystemExit("--actions must be positive")
+
+with csv_path.open(newline="") as stream:
+    rows = list(csv.DictReader(stream))
+
+if len(rows) < 2:
+    raise SystemExit("CSV needs at least two data rows")
+
+cols = [f"processed_action_{i}" for i in range(args.actions)]
+missing = [col for col in cols if col not in rows[0]]
+if missing:
+    raise SystemExit(f"Missing columns: {', '.join(missing)}")
+
+deltas: list[float] = []
+max_delta = 0.0
+max_info: tuple[str, str, float, float] | None = None
+skipped_pairs = 0
+
+for prev, curr in zip(rows, rows[1:]):
+    try:
+        t = row_time(curr, args.dt)
+    except ValueError:
+        skipped_pairs += 1
+        continue
+    if t < args.skip_sec:
+        continue
+    for col in cols:
+        curr_value = safe_float(curr.get(col))
+        prev_value = safe_float(prev.get(col))
+        if curr_value is None or prev_value is None:
+            skipped_pairs += 1
+            continue
+        delta = abs(curr_value - prev_value)
+        deltas.append(delta)
+        if delta > max_delta:
+            max_delta = delta
+            max_info = (curr.get("step", "?"), col, t, delta)
+
+if not deltas:
+    raise SystemExit(
+        f"No processed_action deltas left after skipping the first {args.skip_sec:g}s"
+    )
+
+p = percentile(deltas, args.percentile / 100.0)
+
+print(f"csv: {csv_path}")
+print(f"skip startup seconds: {args.skip_sec:g}")
+print(f"samples analyzed: {len(deltas)}")
+print(f"skipped incomplete samples: {skipped_pairs}")
+print(f"max delta rad/tick: {max_delta:.9f}")
+print(f"max * {args.multiplier:g}: {max_delta * args.multiplier:.9f}")
+print(
+    f"p{args.percentile:g} delta rad/tick: {p:.9f}"
+)
+print(f"p{args.percentile:g} * {args.multiplier:g}: {p * args.multiplier:.9f}")
+print(f"max equivalent rad/s: {max_delta / args.dt:.9f}")
+print(f"p{args.percentile:g} equivalent rad/s: {p / args.dt:.9f}")
+print("max location:", max_info)
+print()
+print("Suggested YAML candidates:")
+print("command_safety:")
+print(f"  # conservative: stable max with margin")
+print(f"  max_target_delta_per_tick: {max_delta * args.multiplier:.6f}")
+print(f"  # smoother: p{args.percentile:g} with margin")
+print(f"  # max_target_delta_per_tick: {p * args.multiplier:.6f}")
+PY

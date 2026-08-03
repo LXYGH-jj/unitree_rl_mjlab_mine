@@ -10,6 +10,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -50,6 +51,19 @@ struct DepthDebugConfig
     bool print_stats = true;
 };
 
+struct DepthPolicyInputNoiseConfig
+{
+    bool enabled = false;
+    bool require_sim_source = true;
+    bool source_is_sim = false;
+    unsigned int seed = 0;
+    float uniform = 0.0f;
+    float gaussian_std = 0.0f;
+    float bias = 0.0f;
+    float dropout_prob = 0.0f;
+    float dropout_value = 0.0f;
+};
+
 inline DepthPreprocessConfig depth_preprocess_config_from_yaml(YAML::Node params)
 {
     DepthPreprocessConfig cfg;
@@ -87,6 +101,77 @@ inline DepthDebugConfig depth_debug_config_from_yaml(YAML::Node params)
     if (debug["save_processed"] && !debug["save_processed"].IsNull()) cfg.save_processed = debug["save_processed"].as<bool>();
     if (debug["print_stats"] && !debug["print_stats"].IsNull()) cfg.print_stats = debug["print_stats"].as<bool>();
     return cfg;
+}
+
+inline DepthPolicyInputNoiseConfig depth_policy_input_noise_config_from_yaml(YAML::Node params)
+{
+    DepthPolicyInputNoiseConfig cfg;
+    if (!params || !params["policy_input_noise"] || params["policy_input_noise"].IsNull()) {
+        return cfg;
+    }
+
+    const auto noise = params["policy_input_noise"];
+    if (noise["enabled"] && !noise["enabled"].IsNull()) cfg.enabled = noise["enabled"].as<bool>();
+    if (noise["require_sim_source"] && !noise["require_sim_source"].IsNull()) {
+        cfg.require_sim_source = noise["require_sim_source"].as<bool>();
+    }
+    if (noise["seed"] && !noise["seed"].IsNull()) cfg.seed = noise["seed"].as<unsigned int>();
+
+    if (params["source"] && !params["source"].IsNull()) {
+        const auto source = params["source"].as<std::string>();
+        cfg.source_is_sim = source.find("/sim/") != std::string::npos ||
+            source.find("sim") != std::string::npos;
+    }
+
+    const auto depth = noise["depth"] && !noise["depth"].IsNull() ? noise["depth"] : noise;
+    if (depth["uniform"] && !depth["uniform"].IsNull()) cfg.uniform = std::max(0.0f, depth["uniform"].as<float>());
+    if (depth["gaussian_std"] && !depth["gaussian_std"].IsNull()) {
+        cfg.gaussian_std = std::max(0.0f, depth["gaussian_std"].as<float>());
+    }
+    if (depth["bias"] && !depth["bias"].IsNull()) cfg.bias = depth["bias"].as<float>();
+    if (depth["dropout_prob"] && !depth["dropout_prob"].IsNull()) {
+        cfg.dropout_prob = std::clamp(depth["dropout_prob"].as<float>(), 0.0f, 1.0f);
+    }
+    if (depth["dropout_value"] && !depth["dropout_value"].IsNull()) {
+        cfg.dropout_value = depth["dropout_value"].as<float>();
+    }
+    return cfg;
+}
+
+inline void apply_depth_policy_input_noise(
+    std::vector<float>& depth,
+    const DepthPolicyInputNoiseConfig& noise_cfg,
+    const DepthPreprocessConfig& preprocess_cfg)
+{
+    if (!noise_cfg.enabled || (noise_cfg.require_sim_source && !noise_cfg.source_is_sim)) {
+        return;
+    }
+
+    static std::mt19937 rng(noise_cfg.seed);
+    std::uniform_real_distribution<float> unit_dist(0.0f, 1.0f);
+    std::uniform_real_distribution<float> uniform_dist(-noise_cfg.uniform, noise_cfg.uniform);
+    std::normal_distribution<float> normal_dist(0.0f, noise_cfg.gaussian_std);
+
+    const float min_value = preprocess_cfg.centered ? -0.5f : 0.0f;
+    const float max_value = preprocess_cfg.centered ? 0.5f : 1.0f;
+    const float dropout_value = std::clamp(noise_cfg.dropout_value, min_value, max_value);
+
+    for (auto& value : depth) {
+        if (!std::isfinite(value)) {
+            value = 0.0f;
+        }
+        value += noise_cfg.bias;
+        if (noise_cfg.uniform > 0.0f) {
+            value += uniform_dist(rng);
+        }
+        if (noise_cfg.gaussian_std > 0.0f) {
+            value += normal_dist(rng);
+        }
+        if (noise_cfg.dropout_prob > 0.0f && unit_dist(rng) < noise_cfg.dropout_prob) {
+            value = dropout_value;
+        }
+        value = std::clamp(value, min_value, max_value);
+    }
 }
 
 inline float depth_invalid_fill_value(const DepthPreprocessConfig& cfg)

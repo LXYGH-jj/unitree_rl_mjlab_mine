@@ -30,7 +30,7 @@ actions:
 
 # Simulation/debug safety: set to 0.0 to match astro_parkour play action timing.
 command_safety:
-  max_target_delta_per_tick: 0.0
+  max_target_delta_per_tick: 0.02
 
 # Depth-student ONNX input scaffold:
 # - obs is float[753] = 53-dim parkour_proprio + 170 zero placeholder + 10 * 53 proprio history.
@@ -118,7 +118,7 @@ observations:
           # dir: /tmp/go2_depth_camera_debug_file
           # dir: /tmp/go2_depth_camera_debug_zero
           dir: /tmp/go2_depth_camera_debug_ros2_policy_v2
-          save_every: 20
+          save_every: 1
           save_raw: true
           save_processed: true
           print_stats: false
