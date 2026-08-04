@@ -1,0 +1,2 @@
+/usr/bin/ar qc libgo2_depth_controller_lib.a CMakeFiles/go2_depth_controller_lib.dir/src/State_RLBase.cpp.o
+/usr/bin/ranlib libgo2_depth_controller_lib.a

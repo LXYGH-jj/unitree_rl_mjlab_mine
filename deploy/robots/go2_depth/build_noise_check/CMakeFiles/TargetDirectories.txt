@@ -1,0 +1,8 @@
+/home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/deploy/robots/go2_depth/build_noise_check/CMakeFiles/uninstall.dir
+/home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/deploy/robots/go2_depth/build_noise_check/CMakeFiles/go2_depth_controller_uninstall.dir
+/home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/deploy/robots/go2_depth/build_noise_check/CMakeFiles/go2_depth_controller_lib.dir
+/home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/deploy/robots/go2_depth/build_noise_check/CMakeFiles/go2_depth_ctrl.dir
+/home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/deploy/robots/go2_depth/build_noise_check/CMakeFiles/depth_camera_debug_test.dir
+/home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/deploy/robots/go2_depth/build_noise_check/CMakeFiles/test.dir
+/home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/deploy/robots/go2_depth/build_noise_check/CMakeFiles/edit_cache.dir
+/home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/deploy/robots/go2_depth/build_noise_check/CMakeFiles/rebuild_cache.dir
