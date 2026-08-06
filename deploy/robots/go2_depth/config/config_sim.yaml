@@ -31,7 +31,7 @@ FSM:
   Velocity:
     transitions:
       Passive: LT + B.on_pressed
-    policy_dir: /home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/deploy/robots/go2_depth/config/policy/depth_student/v3_sim_noise
+    policy_dir: /home/liu/deploy_ws/go2/unitree_rl_mjlab_mine/deploy/robots/go2_depth/config/policy/depth_student/v3_sim_noise
 
 # Simulation-only helper. Keep disabled in config.yaml used for real robots.
 sim_auto_start:

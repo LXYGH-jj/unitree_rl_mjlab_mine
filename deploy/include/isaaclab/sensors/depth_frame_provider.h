@@ -141,6 +141,10 @@ private:
 bool get_ros2_depth_frame_from_provider(YAML::Node params, DepthFrame& frame);
 #endif
 
+#ifdef ISAACLAB_ENABLE_IPC_DEPTH_PROVIDER
+bool get_ipc_depth_frame_from_provider(YAML::Node params, DepthFrame& frame);
+#endif
+
 inline bool get_depth_frame_from_provider(YAML::Node params, DepthFrame& frame)
 {
     std::string provider = "null";
@@ -155,6 +159,22 @@ inline bool get_depth_frame_from_provider(YAML::Node params, DepthFrame& frame)
     if (provider == "file") {
         FileDepthFrameProvider file_provider(params);
         return file_provider.get_latest_frame(frame);
+    }
+    if (provider == "ipc") {
+#ifdef ISAACLAB_ENABLE_IPC_DEPTH_PROVIDER
+        return get_ipc_depth_frame_from_provider(params, frame);
+#else
+        static bool warned_ipc_provider_disabled = false;
+        if (!warned_ipc_provider_disabled) {
+            std::cerr
+                << "[depth_frame_provider] provider=ipc requested, but "
+                << "ISAACLAB_ENABLE_IPC_DEPTH_PROVIDER is not enabled."
+                << std::endl;
+            warned_ipc_provider_disabled = true;
+        }
+        frame = DepthFrame{};
+        return false;
+#endif
     }
     if (provider == "ros2") {
 #ifdef ISAACLAB_ENABLE_ROS2_DEPTH_PROVIDER
@@ -182,4 +202,8 @@ inline bool get_depth_frame_from_provider(YAML::Node params, DepthFrame& frame)
 
 #ifdef ISAACLAB_ENABLE_ROS2_DEPTH_PROVIDER
 #include "isaaclab/sensors/ros2_depth_frame_provider.h"
+#endif
+
+#ifdef ISAACLAB_ENABLE_IPC_DEPTH_PROVIDER
+#include "isaaclab/sensors/ipc_depth_frame_provider.h"
 #endif

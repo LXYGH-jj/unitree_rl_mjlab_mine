@@ -274,32 +274,39 @@ ROS_LOG_DIR=/tmp/ros_log ./build_ros2/depth_camera_debug_test tools/depth_camera
 
 
 ROS2
-cd /home/vi/lxy/unitree_ws/src/unitree_rl_mjlab
+```bash
+cd /home/liu/deploy_ws/go2/unitree_rl_mjlab_mine
 source /opt/ros/humble/setup.bash
 unset LD_LIBRARY_PATH
 export LD_LIBRARY_PATH=/usr/local/lib:/opt/ros/humble/lib
 ./simulate/build/unitree_mujoco --config config_go2_depth.yaml
+```
 
-cd /home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/deploy/robots/go2_depth
+另开一终端
+```bash
+cd /home/liu/deploy_ws/go2/unitree_rl_mjlab_mine/deploy/robots/go2_depth
 source /opt/ros/humble/setup.bash
 unset LD_LIBRARY_PATH
 export LD_LIBRARY_PATH=/usr/local/lib:/opt/ros/humble/lib:/home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/deploy/thirdparty/onnxruntime-linux-x64-1.22.0/lib
-ROS_LOG_DIR=/tmp/ros_log ./build_ros2/go2_depth_ctrl --network lo --config /home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/deploy/robots/go2_depth/config/config_sim.yaml
-
+ROS_LOG_DIR=/tmp/ros_log ./build/go2_depth_ctrl --network lo --config /home/liu/deploy_ws/go2/unitree_rl_mjlab_mine/deploy/robots/go2_depth/config/config_sim.yaml
+```
 
 导出地形为xml
+```bash
   cd /home/vi/lxy/unitree_ws/src/astro_parkour
 uv run python scripts/export_play_terrain_xml.py \
   --terrain multi \
   --collision-horizontal-scale 0.1 \
   --output /tmp/astro_parkour_play_terrain
-
+```
   复制地形
+```bash
   mkdir -p /home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/src/assets/robots/unitree_go2/xmls/terrains
 cp /tmp/astro_parkour_play_terrain/terrain.xml \
   /home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/src/assets/robots/unitree_go2/xmls/terrains/play_terrain.xml
-
+```
   替换地形
+```bash
   cd /home/vi/lxy/unitree_ws/src/astro_parkour
 
 .venv/bin/python scripts/build_deploy_scene_with_terrain.py \
@@ -307,3 +314,54 @@ cp /tmp/astro_parkour_play_terrain/terrain.xml \
   --terrain-xml /home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/src/assets/robots/unitree_go2/xmls/terrains/stairs_terrain.xml \
   --output /home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/src/assets/robots/unitree_go2/xmls/scene_go2_parkour_multi_from_stairs.xml \
   --base-pos 28 0 0.445
+```
+
+  实机
+启动拓展坞
+```bash
+ssh unitree@192.168.123.18
+source /opt/ros/foxy/setup.bash
+source ~/realsense_ws/install/setup.bash
+
+ros2 launch realsense2_camera rs_launch.py
+```
+PC终端
+```bash
+cd /home/liu/deploy_ws/go2/unitree_rl_mjlab_mine/deploy/robots/go2_depth
+source /opt/ros/humble/setup.bash
+unset LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/usr/local/lib:/opt/ros/humble/lib:/home/liu/deploy_ws/go2/unitree_rl_mjlab_mine/deploy/thirdparty/onnxruntime-linux-x64-1.22.0/lib
+
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+
+ROS_LOG_DIR=/tmp/ros_log ./build/go2_depth_ctrl --network eno1 --config /home/liu/deploy_ws/go2/unitree_rl_mjlab_mine/deploy/robots/go2_depth/config/config.yaml
+
+cd /home/liu/deploy_ws/go2/unitree_rl_mjlab_mine/deploy/robots/go2_depth
+source /opt/ros/humble/setup.bash
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_DOMAIN_ID=0
+ROS_LOG_DIR=/tmp/ros_log ./build/go2_depth_ctrl --network eno1 --config /home/liu/deploy_ws/go2/unitree_rl_mjlab_mine/deploy/robots/go2_depth/config/config.yaml
+
+```
+
+相机测试命令
+```bash
+cd /home/liu/deploy_ws/go2/unitree_rl_mjlab_mine/deploy/robots/go2_depth
+./build/depth_camera_debug_test config/policy/depth_student/v3/params/deploy.yaml
+```
+export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+
+cd /home/liu/deploy_ws/go2/unitree_rl_mjlab_mine/deploy/robots/go2_depth
+source /opt/ros/humble/setup.bash
+unset LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/usr/local/lib:/opt/ros/humble/lib:/home/liu/deploy_ws/go2/unitree_rl_mjlab_mine/deploy/thirdparty/onnxruntime-linux-x64-1.22.0/lib
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+
+ros2 bridge
+```bash
+cd /home/liu/deploy_ws/go2/unitree_rl_mjlab_mine/deploy/robots/go2_depth
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export ROS_DOMAIN_ID=0
+./build/go2_depth_bridge --topic /camera/depth/image_rect_raw --output /dev/shm/go2_depth_latest.bin
+
+```

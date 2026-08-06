@@ -35,7 +35,7 @@ class Ros2DepthFrameProvider final : public DepthFrameProvider
 public:
     explicit Ros2DepthFrameProvider(YAML::Node params)
     {
-        topic_ = ros2_depth_yaml_as<std::string>(params, "source", "/camera/camera/aligned_depth_to_color/image_raw");
+        topic_ = ros2_depth_yaml_as<std::string>(params, "source", "/camera/depth/image_rect_raw");
         timeout_ms_ = ros2_depth_yaml_as<int>(params, "ros2_timeout_ms", 100);
         node_name_ = ros2_depth_yaml_as<std::string>(params, "ros2_node_name", "go2_depth_frame_provider");
 
@@ -172,7 +172,7 @@ inline bool get_ros2_depth_frame_from_provider(YAML::Node params, DepthFrame& fr
     const std::string topic = ros2_depth_yaml_as<std::string>(
         params,
         "source",
-        "/camera/camera/aligned_depth_to_color/image_raw");
+        "/camera/depth/image_rect_raw");
     const std::string node_name = ros2_depth_yaml_as<std::string>(
         params,
         "ros2_node_name",

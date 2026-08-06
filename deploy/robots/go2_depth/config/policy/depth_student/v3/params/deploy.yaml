@@ -11,7 +11,7 @@ default_joint_pos: [-0.1,0.9,-1.8, 0.1,0.9,-1.8, -0.1,0.9,-1.8, 0.1,0.9,-1.8]
 commands:
   base_velocity:
     ranges:
-      lin_vel_x: [0.3, 0.3]
+      lin_vel_x: [0.1, 0.1]
       lin_vel_y: [0.0, 0.0]
       ang_vel_z: [0.0, 0.0]
       heading: null
@@ -57,13 +57,13 @@ observations:
         joint_reindex: [3,4,5,0,1,2,9,10,11,6,7,8]
         foot_reindex: [1,0,3,2]
         yaw_input:
-          enabled: false
+          enabled: true
           source: joystick_rx
           scale: 0.1
           next_scale: 0.1
           deadzone: 0.05
         waypoints:
-          enabled: true
+          enabled: false
           use_root_pos_w: true
           origin: [28.0, 0.0]
           reach_radius: 0.2
@@ -87,10 +87,12 @@ observations:
       params:
         # provider: file
         # source: /home/vi/lxy/日志/0630/go2_depth_camera_debug_file/raw_depth_1.txt
-        provider: ros2
-        # provider: null
-        source: /go2_depth/sim/depth/image_raw
-        input_unit: m
+        # provider: ipc
+        # provider: ros2
+        provider: null
+        # source: /camera/depth/image_rect_raw
+        source: /dev/shm/go2_depth_latest.bin
+        input_unit: mm
         ros2_timeout_ms: 1000
         ros2_node_name: go2_depth_policy_subscriber
         preprocess_mode: astro_play

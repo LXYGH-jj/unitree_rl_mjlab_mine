@@ -1,8 +1,8 @@
 robot: "go2"
 # robot_scene: "src/assets/robots/unitree_go2/xmls/scene_go2_parkour_multi.xml"
 # robot_scene: "src/assets/robots/unitree_go2/xmls/scene_go2_parkour_multi_from_gaps.xml"
-# robot_scene: "src/assets/robots/unitree_go2/xmls/scene_go2_parkour_multi_from_stairs.xml"
-robot_scene: "src/assets/robots/unitree_go2/xmls/scene_go2_room_stairs.xml"
+robot_scene: "src/assets/robots/unitree_go2/xmls/scene_go2_parkour_multi_from_stairs.xml"
+# robot_scene: "src/assets/robots/unitree_go2/xmls/scene_go2_room_stairs.xml"
 
 
 domain_id: 0  # Domain id
