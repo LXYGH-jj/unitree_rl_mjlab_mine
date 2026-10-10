@@ -1,0 +1,76 @@
+Importing module 'gym_38' (/home/vi/lxy/b2z1_ws/Interactive-Navigation-for-legged-manipulator/low_level_WBC/third_party/isaacgym/python/isaacgym/_bindings/linux-x86_64/gym_38.so)
+Setting GYM_USD_PLUG_INFO_PATH to /home/vi/lxy/b2z1_ws/Interactive-Navigation-for-legged-manipulator/low_level_WBC/third_party/isaacgym/python/isaacgym/_bindings/linux-x86_64/usd/plugInfo.json
+PyTorch version 1.10.0+cu113
+Device count 2
+/home/vi/lxy/b2z1_ws/Interactive-Navigation-for-legged-manipulator/low_level_WBC/third_party/isaacgym/python/isaacgym/_bindings/src/gymtorch
+Using /home/vi/miniconda3/envs/b2z1_wbc/torch_extensions as PyTorch extensions root...
+Emitting ninja build file /home/vi/miniconda3/envs/b2z1_wbc/torch_extensions/gymtorch/build.ninja...
+Building extension module gymtorch...
+Using envvar MAX_JOBS (2) as the number of workers...
+ninja: no work to do.
+Not connected to PVD
++++ Using GPU PhysX
+Physics Engine: PhysX
+Physics Device: cuda:0
+GPU Pipeline: enabled
+Loading extension module gymtorch...
+Setting seed: 1
+||||||||||Observe gait commands!
+Added ground plane with friction: 1.0, restitution: 0.0
+------------------------------------------------------
+num_actions: 18
+num_torques: 18
+num_dofs: 19
+num_bodies: 24
+penalized_contact_names: ['FL_thigh', 'FR_thigh', 'RL_thigh', 'RR_thigh', 'base', 'FL_calf', 'FR_calf', 'RL_calf', 'RR_calf']
+termination_contact_names: ['base']
+feet_names: ['FL_foot', 'FR_foot', 'RL_foot', 'RR_foot']
+EE Gripper index: 23
+self.cfg.asset.self_collisions 0
+self.cfg.asset.self_collisions 0
+penalized_contact_indices: tensor([ 2,  6, 10, 14,  0,  3,  7, 11, 15], device='cuda:0')
+termination_contact_indices: tensor([0], device='cuda:0')
+feet_indices: tensor([ 4,  8, 12, 16], device='cuda:0')
+======Camera sensor added======
++++++++++++++++++++===== Initializing buffers+===================================
+------------------------------------------------------
+root_states shape: torch.Size([1, 13])
+dof_state shape: torch.Size([19, 2])
+force_sensor_tensor shape: torch.Size([1, 4, 6])
+contact_forces shape: torch.Size([1, 24, 3])
+rigid_body_state shape: torch.Size([1, 24, 13])
+jacobian_whole shape: torch.Size([1, 24, 6, 25])
+box_root_state shape: torch.Size([1, 13])
+box_contact_force shape: torch.Size([1, 3])
+box_rigid_body_state shape: torch.Size([1, 13])
+------------------------------------------------------
+====dof_names====  ['FL_hip_joint', 'FL_thigh_joint', 'FL_calf_joint', 'FR_hip_joint', 'FR_thigh_joint', 'FR_calf_joint', 'RL_hip_joint', 'RL_thigh_joint', 'RL_calf_joint', 'RR_hip_joint', 'RR_thigh_joint', 'RR_calf_joint', 'joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6', 'jointGripper']
+====self.default_dof_pos[i]=== tensor([ 0.1000,  0.8000, -1.5000, -0.1000,  0.8000, -1.5000,  0.1000,  0.8000,
+        -1.5000, -0.1000,  0.8000, -1.5000,  0.0000,  1.4800, -0.6300, -0.8400,
+         0.0000,  1.5700,  0.0000], device='cuda:0')
+Loaded exported Interactive actor: /home/vi/lxy/b2z1_ws/B2Z1_Interactive_MuJoCo_Sim2Sim/b2z1_interactive_sim2sim/b2z1_low_policy_jit.pt
+Gym control_dt= 0.019999999552965164 obs_dim= 799 action_dim= 18
+Command fixed by teleop_mode=True; randomness disabled; static Z1 joint targets (original Gym IK temporarily bypassed)
+Warmup: 1.0 seconds; command: 0.3 m/s
+GYM first-proprio [cmd:57-60, ee:60-63]: [0.0000000e+00 0.0000000e+00 0.0000000e+00 4.6193981e-01 3.4847542e-11
+ 2.0379424e-01]
+t=0.00s cmd_vx=+0.00  x=-0.000 y=-0.000 z=0.598 yaw=-0.00deg  world_vx=-0.000 world_vy=+0.000 body_vx=-0.000 body_vy=+0.000
+t=0.02s cmd_vx=+0.00  x=+0.000 y=+0.000 z=0.593 yaw=+0.01deg  world_vx=+0.030 world_vy=+0.000 body_vx=+0.030 body_vy=+0.000
+t=0.52s cmd_vx=+0.00  x=-0.017 y=-0.003 z=0.605 yaw=-0.02deg  world_vx=-0.038 world_vy=-0.034 body_vx=-0.038 body_vy=-0.034
+t=1.02s cmd_vx=+0.00  x=-0.027 y=-0.004 z=0.606 yaw=+0.28deg  world_vx=-0.012 world_vy=-0.004 body_vx=-0.012 body_vy=-0.004
+t=1.52s cmd_vx=+0.30  x=+0.201 y=-0.001 z=0.636 yaw=+1.89deg  world_vx=+0.526 world_vy=-0.116 body_vx=+0.522 body_vy=-0.133
+t=2.02s cmd_vx=+0.30  x=+0.481 y=-0.015 z=0.644 yaw=+3.85deg  world_vx=+0.620 world_vy=+0.000 body_vx=+0.619 body_vy=-0.041
+t=2.52s cmd_vx=+0.30  x=+0.766 y=+0.023 z=0.645 yaw=+6.11deg  world_vx=+0.489 world_vy=+0.054 body_vx=+0.492 body_vy=+0.002
+t=3.02s cmd_vx=+0.30  x=+1.037 y=+0.059 z=0.641 yaw=+8.57deg  world_vx=+0.470 world_vy=+0.010 body_vx=+0.467 body_vy=-0.060
+t=3.52s cmd_vx=+0.30  x=+1.303 y=+0.071 z=0.629 yaw=+10.76deg  world_vx=+0.555 world_vy=-0.017 body_vx=+0.542 body_vy=-0.120
+t=4.02s cmd_vx=+0.30  x=+1.594 y=+0.071 z=0.651 yaw=+12.51deg  world_vx=+0.534 world_vy=+0.032 body_vx=+0.528 body_vy=-0.085
+t=4.52s cmd_vx=+0.30  x=+1.902 y=+0.101 z=0.642 yaw=+13.02deg  world_vx=+0.595 world_vy=-0.028 body_vx=+0.574 body_vy=-0.162
+t=5.02s cmd_vx=+0.30  x=+2.193 y=+0.136 z=0.646 yaw=+15.00deg  world_vx=+0.590 world_vy=+0.070 body_vx=+0.588 body_vy=-0.085
+t=5.52s cmd_vx=+0.30  x=+2.466 y=+0.208 z=0.642 yaw=+17.21deg  world_vx=+0.471 world_vy=+0.117 body_vx=+0.485 body_vy=-0.028
+t=6.00s cmd_vx=+0.30  x=+2.710 y=+0.288 z=0.641 yaw=+19.39deg  world_vx=+0.483 world_vy=+0.182 body_vx=+0.516 body_vy=+0.011
+Saved CSV: /home/vi/lxy/b2z1_ws/B2Z1_Interactive_MuJoCo_Sim2Sim/b2z1_interactive_sim2sim/stage1_gym.csv
+===== Steady-state averages (after acceleration) =====
+target body_vx=0.300 m/s, body_vy=0.000 m/s
+avg_body_vx=0.566 avg_body_vy=-0.043 avg_world_vx=0.562 avg_world_vy=0.075 avg_root_z=0.637 avg_world_wz=0.064
+World displacement: dx=+2.710 m, dy=+0.288 m, path_angle=+6.07 deg
+Final yaw=+19.39 deg

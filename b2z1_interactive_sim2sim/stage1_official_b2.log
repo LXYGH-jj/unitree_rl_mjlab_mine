@@ -1,0 +1,17 @@
+MuJoCo initial EE input: [0.46193975 0.         0.20134172]
+t=0.02s cmd_vx=+0.00 x=+0.000 y=+0.000 z=0.599 yaw=+0.00deg body_vx=+0.011 body_vy=+0.000 ee=[0.46193975 0.         0.20134172]
+t=0.52s cmd_vx=+0.00 x=-0.026 y=-0.005 z=0.596 yaw=-0.29deg body_vx=-0.069 body_vy=+0.013 ee=[ 0.4615301  -0.00081251  0.20636505]
+t=1.02s cmd_vx=+0.30 x=-0.055 y=-0.008 z=0.595 yaw=-0.02deg body_vx=+0.072 body_vy=+0.012 ee=[ 0.463293   -0.00082397  0.20532659]
+t=1.52s cmd_vx=+0.30 x=+0.237 y=-0.080 z=0.608 yaw=+0.10deg body_vx=+0.556 body_vy=-0.179 ee=[ 0.46606487 -0.00106705  0.18712792]
+t=2.02s cmd_vx=+0.30 x=+0.603 y=-0.172 z=0.608 yaw=+1.16deg body_vx=+0.534 body_vy=-0.111 ee=[ 0.46577373 -0.0013482   0.1896743 ]
+t=2.52s cmd_vx=+0.30 x=+0.954 y=-0.237 z=0.606 yaw=+1.74deg body_vx=+0.550 body_vy=-0.141 ee=[ 0.46587184 -0.00098216  0.19114633]
+t=3.02s cmd_vx=+0.30 x=+1.321 y=-0.308 z=0.607 yaw=+2.49deg body_vx=+0.538 body_vy=-0.113 ee=[ 0.4656192  -0.0009204   0.19089372]
+t=3.52s cmd_vx=+0.30 x=+1.672 y=-0.362 z=0.606 yaw=+3.10deg body_vx=+0.549 body_vy=-0.132 ee=[ 0.46571824 -0.00113509  0.19150265]
+t=4.02s cmd_vx=+0.30 x=+2.038 y=-0.419 z=0.607 yaw=+3.89deg body_vx=+0.551 body_vy=-0.117 ee=[ 0.46552756 -0.00108634  0.19079785]
+t=4.52s cmd_vx=+0.30 x=+2.397 y=-0.464 z=0.607 yaw=+4.60deg body_vx=+0.549 body_vy=-0.119 ee=[ 0.46556604 -0.00093857  0.19125855]
+t=5.02s cmd_vx=+0.30 x=+2.758 y=-0.509 z=0.607 yaw=+5.27deg body_vx=+0.548 body_vy=-0.117 ee=[ 0.46546435 -0.00086039  0.19147696]
+t=5.52s cmd_vx=+0.30 x=+3.122 y=-0.548 z=0.606 yaw=+5.86deg body_vx=+0.552 body_vy=-0.117 ee=[ 0.4655894  -0.00103193  0.19178006]
+t=6.00s cmd_vx=+0.30 x=+3.475 y=-0.580 z=0.602 yaw=+6.56deg body_vx=+0.511 body_vy=-0.146 ee=[ 0.46523532 -0.00079234  0.19352445]
+===== MuJoCo static-arm stage1 averages =====
+target=0.300 avg_body_vx=0.718 avg_body_vy=-0.144 avg_root_z=0.628 final_yaw=+6.56deg
+CSV: /home/vi/lxy/b2z1_ws/B2Z1_Interactive_MuJoCo_Sim2Sim/b2z1_interactive_sim2sim/stage1_official_b2.csv

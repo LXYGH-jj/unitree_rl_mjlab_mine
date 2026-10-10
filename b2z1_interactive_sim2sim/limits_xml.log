@@ -1,0 +1,48 @@
+Simulator joint-limit mode: xml
+  FR_hip_joint        [-0.870, 0.870]
+  FR_thigh_joint      [-0.940, 4.690]
+  FR_calf_joint       [-2.820, -0.430]
+  FL_hip_joint        [-0.870, 0.870]
+  FL_thigh_joint      [-0.940, 4.690]
+  FL_calf_joint       [-2.820, -0.430]
+  RR_hip_joint        [-0.870, 0.870]
+  RR_thigh_joint      [-0.940, 4.690]
+  RR_calf_joint       [-2.820, -0.430]
+  RL_hip_joint        [-0.870, 0.870]
+  RL_thigh_joint      [-0.940, 4.690]
+  RL_calf_joint       [-2.820, -0.430]
+Loaded: /home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/src/assets/robots/unitree_b2z1/xmls/scene_b2z1.xml
+Model nq,nv,nu: 26 25 18
+Policy joints: ('FR_hip_joint', 'FR_thigh_joint', 'FR_calf_joint', 'FL_hip_joint', 'FL_thigh_joint', 'FL_calf_joint', 'RR_hip_joint', 'RR_thigh_joint', 'RR_calf_joint', 'RL_hip_joint', 'RL_thigh_joint', 'RL_calf_joint', 'joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6')
+Fixed EE policy target [arm-base/body frame]: [ 2.5415078e-01 -1.3010427e-19  3.1320623e-01]
+Control_dt=0.020, Physics_dt=0.005, substeps=4
+Mode: direct Python MuJoCo, no ROS/DDS/no real motor output
+t=0.00s cmd_vx=0.00 x=-0.000 y=-0.000 z=0.499 yaw=-0.00deg world_vx=+nan world_vy=+nan leg_act_max=0.81
+t=0.50s cmd_vx=0.00 x=+0.011 y=+0.001 z=0.624 yaw=-0.35deg world_vx=+0.022 world_vy=+0.003 leg_act_max=1.37
+t=1.00s cmd_vx=0.30 x=+0.034 y=-0.005 z=0.593 yaw=-0.31deg world_vx=+0.047 world_vy=-0.013 leg_act_max=1.81
+t=1.50s cmd_vx=0.30 x=+0.317 y=-0.072 z=0.622 yaw=+0.36deg world_vx=+0.566 world_vy=-0.134 leg_act_max=1.93
+t=2.00s cmd_vx=0.30 x=+0.689 y=-0.144 z=0.613 yaw=+1.87deg world_vx=+0.745 world_vy=-0.143 leg_act_max=1.89
+t=2.50s cmd_vx=0.30 x=+1.080 y=-0.231 z=0.611 yaw=+3.17deg world_vx=+0.783 world_vy=-0.174 leg_act_max=1.86
+t=3.00s cmd_vx=0.30 x=+1.463 y=-0.300 z=0.612 yaw=+4.54deg world_vx=+0.765 world_vy=-0.137 leg_act_max=1.89
+t=3.50s cmd_vx=0.30 x=+1.855 y=-0.362 z=0.611 yaw=+5.87deg world_vx=+0.784 world_vy=-0.125 leg_act_max=1.89
+t=4.00s cmd_vx=0.30 x=+2.245 y=-0.416 z=0.611 yaw=+7.21deg world_vx=+0.780 world_vy=-0.107 leg_act_max=1.88
+t=4.50s cmd_vx=0.30 x=+2.632 y=-0.456 z=0.611 yaw=+8.56deg world_vx=+0.773 world_vy=-0.080 leg_act_max=1.88
+t=4.98s cmd_vx=0.30 x=+3.013 y=-0.492 z=0.608 yaw=+9.79deg world_vx=+0.794 world_vy=-0.075 leg_act_max=1.60
+World displacement: dx=3.013 m, dy=-0.492 m, planar=3.053 m, path_angle=-9.27 deg
+World-X displacement: 3.013 m
+===== Raw policy position-target clipping report =====
+policy ticks checked: 200
+  FR_hip_joint          0.0% (0/200)
+  FR_thigh_joint        0.0% (0/200)
+  FR_calf_joint         0.0% (0/200)
+  FL_hip_joint          0.0% (0/200)
+  FL_thigh_joint        0.0% (0/200)
+  FL_calf_joint         0.0% (0/200)
+  RR_hip_joint          0.0% (0/200)
+  RR_thigh_joint        0.0% (0/200)
+  RR_calf_joint         0.0% (0/200)
+  RL_hip_joint          0.0% (0/200)
+  RL_thigh_joint        0.0% (0/200)
+  RL_calf_joint         0.0% (0/200)
+Total leg targets clipped: 0.0% of joints over checked ticks
+XML limits are a SIMULATION-ONLY diagnostic, never copy these to real B2 settings.

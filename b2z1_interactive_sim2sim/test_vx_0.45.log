@@ -1,0 +1,19 @@
+Loaded: /home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/src/assets/robots/unitree_b2z1/xmls/scene_b2z1.xml
+Model nq,nv,nu: 26 25 18
+Policy joints: ('FR_hip_joint', 'FR_thigh_joint', 'FR_calf_joint', 'FL_hip_joint', 'FL_thigh_joint', 'FL_calf_joint', 'RR_hip_joint', 'RR_thigh_joint', 'RR_calf_joint', 'RL_hip_joint', 'RL_thigh_joint', 'RL_calf_joint', 'joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6')
+Fixed EE policy target [arm-base/body frame]: [ 2.5415078e-01 -1.3010427e-19  3.1320623e-01]
+Control_dt=0.020, Physics_dt=0.005, substeps=4
+Mode: direct Python MuJoCo, no ROS/DDS/no real motor output
+t=0.00s cmd_vx=0.00 x=-0.000 y=-0.000 z=0.499 yaw=-0.00deg world_vx=+nan world_vy=+nan leg_act_max=0.81
+t=0.50s cmd_vx=0.00 x=+0.011 y=+0.001 z=0.624 yaw=-0.35deg world_vx=+0.022 world_vy=+0.003 leg_act_max=1.37
+t=1.00s cmd_vx=0.45 x=+0.034 y=-0.005 z=0.593 yaw=-0.31deg world_vx=+0.047 world_vy=-0.013 leg_act_max=1.93
+t=1.50s cmd_vx=0.45 x=+0.353 y=-0.078 z=0.618 yaw=+0.17deg world_vx=+0.638 world_vy=-0.145 leg_act_max=1.89
+t=2.00s cmd_vx=0.45 x=+0.784 y=-0.148 z=0.609 yaw=+1.99deg world_vx=+0.863 world_vy=-0.140 leg_act_max=1.96
+t=2.50s cmd_vx=0.45 x=+1.231 y=-0.231 z=0.609 yaw=+3.40deg world_vx=+0.893 world_vy=-0.167 leg_act_max=1.94
+t=3.00s cmd_vx=0.45 x=+1.678 y=-0.310 z=0.610 yaw=+4.77deg world_vx=+0.893 world_vy=-0.157 leg_act_max=1.91
+t=3.50s cmd_vx=0.45 x=+2.119 y=-0.369 z=0.606 yaw=+6.19deg world_vx=+0.883 world_vy=-0.119 leg_act_max=1.91
+t=4.00s cmd_vx=0.45 x=+2.561 y=-0.417 z=0.608 yaw=+7.56deg world_vx=+0.883 world_vy=-0.097 leg_act_max=1.88
+t=4.50s cmd_vx=0.45 x=+2.997 y=-0.443 z=0.608 yaw=+9.02deg world_vx=+0.874 world_vy=-0.051 leg_act_max=1.93
+t=4.98s cmd_vx=0.45 x=+3.430 y=-0.472 z=0.604 yaw=+10.38deg world_vx=+0.900 world_vy=-0.060 leg_act_max=1.67
+World displacement: dx=3.430 m, dy=-0.472 m, planar=3.462 m, path_angle=-7.84 deg
+World-X displacement: 3.430 m

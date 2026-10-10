@@ -1,0 +1,30 @@
+# Extracted from ALORE B2_deploy/configs/b2z1.yaml; no high_level section.
+# Target model: Interactive low_level_WBC model_57000.pt AFTER TorchScript export.
+# IMPORTANT: These gains are examples from the author's config, NOT validated for your hardware.
+control_dt: 0.02
+msg_type: go
+lowcmd_topic: rt/lowcmd
+lowstate_topic: rt/lowstate
+leg_joint2motor_idx: [0,1,2,3,4,5,6,7,8,9,10,11]
+joint_limits_min: [-0.3,0,-2.6, -0.3,0,-2.6, -0.3,0,-2.6, -0.3,0,-2.6]
+joint_limits_max: [0.3,1.4,-0.6, 0.3,1.4,-0.6, 0.3,1.4,-0.6, 0.3,1.4,-0.6]
+low_level:
+  low_level_policy_path: ./b2z1_low_policy_jit.pt
+  # Original ALORE sim/test convention: policy order FR,FL,RR,RL, then arm 1..6.
+  # Values here use Interactive default joint positions REINDEXED to FR,FL,RR,RL.
+  # Compare carefully with your REAL robot motor q and kinematic sign conventions.
+  default_angles: [-0.1,0.8,-1.5, 0.1,0.8,-1.5, -0.1,0.8,-1.5, 0.1,0.8,-1.5, 0,1.48,-0.63,-0.84,0,1.57]
+  action_scale: [0.4,0.45,0.45, 0.4,0.45,0.45, 0.4,0.45,0.45, 0.4,0.45,0.45, 0,0,0,0,0,0]
+  cmd_scale: [2.0,2.0,0.25]
+  ang_vel_scale: 0.25
+  dof_pos_scale: 1.0
+  dof_vel_scale: 0.05
+  num_actions: 18
+  num_proprio: 71
+  num_obs: 799
+  history_len: 10
+  frequency_hz: 2.0
+  startup_hold_cycles: 10
+  max_abs_action: 100.0
+  # This config does not enable hardware control, doesn't represent a safety envelope.
+  # Authors' Kp/Kd values are intentionally not activated by this package.

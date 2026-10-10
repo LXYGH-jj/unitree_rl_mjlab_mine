@@ -1,0 +1,73 @@
+Loaded: /home/vi/lxy/unitree_ws/src/unitree_rl_mjlab/src/assets/robots/unitree_b2z1/xmls/scene_b2z1_train_mount.xml
+Model nq,nv,nu: 26 25 18
+Policy joints: ('FR_hip_joint', 'FR_thigh_joint', 'FR_calf_joint', 'FL_hip_joint', 'FL_thigh_joint', 'FL_calf_joint', 'RR_hip_joint', 'RR_thigh_joint', 'RR_calf_joint', 'RL_hip_joint', 'RL_thigh_joint', 'RL_calf_joint', 'joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6')
+Fixed EE policy target [arm-base/body frame]: [ 4.2415079e-01 -1.3010427e-19  3.3320624e-01]
+Control_dt=0.020, Physics_dt=0.005, substeps=4
+Mode: direct Python MuJoCo, no ROS/DDS/no real motor output
+t=0.00s cmd_vx=0.00 x=-0.000 y=-0.000 z=0.499 yaw=-0.00deg world_vx=+nan world_vy=+nan leg_act_max=0.81
+t=0.50s cmd_vx=0.00 x=+0.010 y=+0.005 z=0.624 yaw=-0.33deg world_vx=+0.021 world_vy=+0.010 leg_act_max=1.34
+t=1.00s cmd_vx=0.00 x=+0.025 y=-0.007 z=0.596 yaw=-0.20deg world_vx=+0.030 world_vy=-0.024 leg_act_max=1.10
+t=1.50s cmd_vx=0.00 x=+0.022 y=-0.007 z=0.595 yaw=-0.04deg world_vx=-0.006 world_vy=-0.001 leg_act_max=1.12
+t=2.00s cmd_vx=0.00 x=+0.022 y=-0.007 z=0.594 yaw=+0.06deg world_vx=-0.000 world_vy=+0.001 leg_act_max=1.13
+t=2.50s cmd_vx=0.00 x=+0.023 y=-0.006 z=0.593 yaw=+0.10deg world_vx=+0.002 world_vy=+0.001 leg_act_max=1.14
+t=3.00s cmd_vx=0.00 x=+0.024 y=-0.005 z=0.593 yaw=+0.10deg world_vx=+0.003 world_vy=+0.001 leg_act_max=1.15
+t=3.50s cmd_vx=0.00 x=+0.026 y=-0.004 z=0.592 yaw=+0.07deg world_vx=+0.003 world_vy=+0.001 leg_act_max=1.16
+t=4.00s cmd_vx=0.00 x=+0.027 y=-0.004 z=0.592 yaw=+0.03deg world_vx=+0.003 world_vy=+0.001 leg_act_max=1.17
+t=4.50s cmd_vx=0.00 x=+0.029 y=-0.003 z=0.592 yaw=-0.03deg world_vx=+0.003 world_vy=+0.001 leg_act_max=1.18
+t=5.00s cmd_vx=0.00 x=+0.030 y=-0.002 z=0.591 yaw=-0.08deg world_vx=+0.003 world_vy=+0.001 leg_act_max=1.19
+t=5.50s cmd_vx=0.00 x=+0.032 y=-0.002 z=0.591 yaw=-0.13deg world_vx=+0.003 world_vy=+0.001 leg_act_max=1.20
+t=6.00s cmd_vx=0.00 x=+0.033 y=-0.001 z=0.591 yaw=-0.19deg world_vx=+0.002 world_vy=+0.001 leg_act_max=1.21
+t=6.50s cmd_vx=0.00 x=+0.034 y=-0.001 z=0.591 yaw=-0.23deg world_vx=+0.002 world_vy=+0.001 leg_act_max=1.21
+t=7.00s cmd_vx=0.00 x=+0.035 y=-0.001 z=0.591 yaw=-0.27deg world_vx=+0.002 world_vy=+0.001 leg_act_max=1.22
+t=7.50s cmd_vx=0.00 x=+0.035 y=-0.000 z=0.591 yaw=-0.31deg world_vx=+0.002 world_vy=+0.001 leg_act_max=1.22
+t=8.00s cmd_vx=0.00 x=+0.036 y=+0.000 z=0.591 yaw=-0.34deg world_vx=+0.001 world_vy=+0.001 leg_act_max=1.23
+t=8.50s cmd_vx=0.00 x=+0.037 y=+0.000 z=0.591 yaw=-0.37deg world_vx=+0.001 world_vy=+0.000 leg_act_max=1.23
+t=9.00s cmd_vx=0.00 x=+0.037 y=+0.000 z=0.591 yaw=-0.39deg world_vx=+0.001 world_vy=+0.000 leg_act_max=1.23
+t=9.50s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.591 yaw=-0.40deg world_vx=+0.001 world_vy=+0.000 leg_act_max=1.23
+t=10.00s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.591 yaw=-0.42deg world_vx=+0.000 world_vy=+0.000 leg_act_max=1.24
+t=10.50s cmd_vx=0.00 x=+0.038 y=+0.001 z=0.591 yaw=-0.42deg world_vx=+0.000 world_vy=+0.000 leg_act_max=1.24
+t=11.00s cmd_vx=0.00 x=+0.038 y=+0.001 z=0.590 yaw=-0.43deg world_vx=+0.000 world_vy=+0.000 leg_act_max=1.24
+t=11.50s cmd_vx=0.00 x=+0.038 y=+0.001 z=0.590 yaw=-0.43deg world_vx=+0.000 world_vy=+0.000 leg_act_max=1.24
+t=12.00s cmd_vx=0.00 x=+0.038 y=+0.001 z=0.590 yaw=-0.43deg world_vx=-0.000 world_vy=+0.000 leg_act_max=1.24
+t=12.50s cmd_vx=0.00 x=+0.038 y=+0.001 z=0.590 yaw=-0.42deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.24
+t=13.00s cmd_vx=0.00 x=+0.038 y=+0.001 z=0.590 yaw=-0.42deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.24
+t=13.50s cmd_vx=0.00 x=+0.038 y=+0.001 z=0.590 yaw=-0.41deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=14.00s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.41deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=14.50s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.40deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=15.00s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.39deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=15.50s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.38deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=16.00s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.38deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=16.50s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.37deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=17.00s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.36deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=17.50s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.35deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=18.00s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.35deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=18.50s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.34deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=19.00s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.33deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=19.50s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.33deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=20.00s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.32deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=20.50s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.32deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=21.00s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.31deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=21.50s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.31deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=22.00s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.30deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=22.50s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.30deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=23.00s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.30deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=23.50s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.29deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=24.00s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.29deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=24.50s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.29deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=25.00s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.29deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=25.50s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.28deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=26.00s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.28deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=26.50s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.28deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=27.00s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.28deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=27.50s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.28deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=28.00s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.27deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=28.50s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.27deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=29.00s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.27deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=29.50s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.27deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=30.00s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.27deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.23
+t=30.50s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.27deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.22
+t=31.00s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.27deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.22
+t=31.50s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.27deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.22
+t=32.00s cmd_vx=0.00 x=+0.037 y=+0.001 z=0.590 yaw=-0.27deg world_vx=-0.000 world_vy=-0.000 leg_act_max=1.22
+World displacement: dx=0.037 m, dy=0.001 m, planar=0.037 m, path_angle=+0.79 deg
+World-X displacement: 0.037 m
