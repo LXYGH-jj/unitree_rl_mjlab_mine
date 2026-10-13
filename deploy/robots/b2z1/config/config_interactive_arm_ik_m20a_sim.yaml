@@ -1,0 +1,303 @@
+# M2.0a SIM ONLY; g from FixStand enters InteractiveArmIK.
+# FIRST TEST: xyz=false walking=false. Y/Z test remains available in M1.9b via o.
+# ee_obs_source baseline_fixed preserves M1.8 actor input, NOT a learned EE target-tracking mode.
+FSM:
+  _:
+    Passive:
+      id: 1
+    FixStand:
+      id: 2
+    SlowLieDown:
+      id: 4
+    Interactive:
+      id: 3
+      type: InteractiveRL
+    ArmIKStand:
+      id: 5
+      type: ArmIKStand
+    InteractiveArmIK:
+      id: 6
+      type: InteractiveArmIK
+  Passive:
+    transitions:
+      FixStand: LT + up.on_pressed
+    mode:
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    - 1
+    kd:
+    - 3
+    - 3
+    - 3
+    - 3
+    - 3
+    - 3
+    - 3
+    - 3
+    - 3
+    - 3
+    - 3
+    - 3
+    - 3
+    - 3
+    - 3
+    - 3
+    - 3
+    - 3
+    kp:
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 0
+    - 60
+    - 60
+    - 60
+    - 60
+    - 60
+    - 60
+    target_indices:
+    - 12
+    - 13
+    - 14
+    - 15
+    - 16
+    - 17
+    target_q:
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    target_duration: 2.0
+  FixStand:
+    transitions:
+      Passive: LT + B.on_pressed
+      SlowLieDown: LT + down.on_pressed
+      Interactive: RT + A.on_pressed
+      ArmIKStand: Y.on_pressed
+      InteractiveArmIK: X.on_pressed
+    kp:
+    - 500
+    - 500
+    - 500
+    - 500
+    - 500
+    - 500
+    - 500
+    - 500
+    - 500
+    - 500
+    - 500
+    - 500
+    - 60.0
+    - 60.0
+    - 60.0
+    - 60.0
+    - 60.0
+    - 60.0
+    kd:
+    - 4
+    - 4
+    - 6
+    - 4
+    - 4
+    - 6
+    - 4
+    - 4
+    - 6
+    - 4
+    - 4
+    - 6
+    - 2.5
+    - 2.5
+    - 2.5
+    - 2.5
+    - 2.5
+    - 2.5
+    ts:
+    - 0
+    - 2
+    qs:
+    - []
+    - - 0.1
+      - 0.8
+      - -1.5
+      - -0.1
+      - 0.8
+      - -1.5
+      - 0.1
+      - 1.0
+      - -1.5
+      - -0.1
+      - 1.0
+      - -1.5
+      - 0.0
+      - 0.5
+      - -1.0
+      - 0.0
+      - 0.0
+      - 0.0
+  SlowLieDown:
+    kp:
+    - 350
+    - 350
+    - 350
+    - 350
+    - 350
+    - 350
+    - 350
+    - 350
+    - 350
+    - 350
+    - 350
+    - 350
+    - 60
+    - 60
+    - 60
+    - 60
+    - 60
+    - 60
+    kd:
+    - 4
+    - 4
+    - 6
+    - 4
+    - 4
+    - 6
+    - 4
+    - 4
+    - 6
+    - 4
+    - 4
+    - 6
+    - 2.5
+    - 2.5
+    - 2.5
+    - 2.5
+    - 2.5
+    - 2.5
+    ts:
+    - 0
+    - 5
+    qs:
+    - []
+    - - 0.0
+      - 1.28
+      - -2.8
+      - 0.0
+      - 1.28
+      - -2.8
+      - 0.0
+      - 1.28
+      - -2.8
+      - 0.0
+      - 1.28
+      - -2.8
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+  Interactive:
+    transitions:
+      FixStand: LT + up.on_pressed
+      Passive: LT + B.on_pressed
+      SlowLieDown: LT + down.on_pressed
+    policy_dir: config/policy/velocity
+  ArmIKStand:
+    transitions:
+      FixStand: LT + up.on_pressed
+      Passive: LT + B.on_pressed
+      SlowLieDown: LT + down.on_pressed
+  InteractiveArmIK:
+    transitions:
+      FixStand: LT + up.on_pressed
+      Passive: LT + B.on_pressed
+      SlowLieDown: LT + down.on_pressed
+z1_sdk:
+  enabled: false
+  enable_on_loopback: false
+  with_gripper: false
+  control_hz: 500.0
+  passive_on_shutdown: true
+  back_to_start_on_shutdown: false
+  launch_controller_process: true
+  controller_binary_path: thirdparty/z1_ctrl/z1_ctrl
+  controller_startup_delay_sec: 1.0
+  controller_shutdown_delay_sec: 4.0
+z1_diagnostic:
+  enabled: false
+  toggle_key: u
+  period_sec: 4.0
+  amplitude_q:
+  - 0.15
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+  - 0.0
+interactive:
+  sim_only: true
+  policy_path: ../../interactive_b2z1/build/b2z1_interactive_policy.onnx
+  b2_kp: 360.0
+  b2_kd: 5.0
+  z1_kp: 90.0
+  z1_kd: 6.0
+  stand_slew_rad_s: 1.6
+  walk_slew_rad_s: 8.0
+  warmup_ms: 2000
+  max_forward_ms: 2000
+  forward_vx: 0.12
+arm_ik_stand:
+  sim_only: true
+  enable_xyz_keys: true
+  mount_xyz_base:
+  - 0.03
+  - 0.0
+  - 0.08
+  tcp_offset_sdk_x: 0.0882
+  position_step_m: 0.01
+  max_goal_shift_m: 0.07
+  max_arm_step_rad_per_5ms: 0.004
+  max_ik_joint_jump_rad: 0.65
+sim_auto_start:
+  enabled: false
+interactive_arm_ik:
+  sim_only: true
+  enable_xyz_keys: true
+  enable_walking: false
+  ee_obs_source: baseline_fixed
+  mount_xyz_base:
+  - 0.03
+  - 0.0
+  - 0.08
+  tcp_offset_sdk_x: 0.0882
+  position_step_m: 0.01
+  max_goal_shift_m: 0.03
+  max_arm_step_rad_per_5ms: 0.004
+  max_ik_joint_jump_rad: 0.65

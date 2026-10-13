@@ -51,6 +51,8 @@ include_directories(
   /usr/local/include/iceoryx/v2.0.2
   ${UNITREE_SDK2_INCLUDE_DIR}
   ${Z1_SDK_ROOT}/include
+  ${PROJECT_SOURCE_DIR}/../../interactive_b2z1/include
+  ${PROJECT_SOURCE_DIR}/../../interactive_b2z1/sim_closed_loop
   include
   ${ONNXRUNTIME_DIR}/include
   ${PROJECT_SOURCE_DIR}/../../include/
@@ -81,6 +83,15 @@ file(GLOB_RECURSE ADD_SRC_LIST
 )
 
 add_library(${PROJECT_NAME}_lib ${ADD_SRC_LIST})
+# Reuse the parity-tested Interactive observation and ONNX adapter.
+# No duplicate SDK2 channel / FSM / keyboard is built here.
+target_sources(${PROJECT_NAME}_lib PRIVATE
+  ${B2Z1_DEPLOY_ROOT}/interactive_b2z1/src/interactive_observation.cpp
+  ${B2Z1_DEPLOY_ROOT}/interactive_b2z1/src/interactive_feedback_adapter.cpp
+  ${B2Z1_DEPLOY_ROOT}/interactive_b2z1/src/interactive_pipeline.cpp
+  ${B2Z1_DEPLOY_ROOT}/interactive_b2z1/src/interactive_snapshot_store.cpp
+  ${B2Z1_DEPLOY_ROOT}/interactive_b2z1/sim_closed_loop/joint_target_guard.cpp
+)
 target_compile_definitions(${PROJECT_NAME}_lib PUBLIC
   B2Z1_DEPLOY_ROOT="${B2Z1_DEPLOY_ROOT}"
   UNITREE_RL_MJLAB_ENABLE_Z1_SDK
@@ -89,3 +100,9 @@ link_libraries(${PROJECT_NAME}_lib)
 
 add_executable(b2z1_ctrl main.cpp)
 add_executable(b2z1_infer_joint_map tools/infer_joint_map.cpp)
+
+
+# M1.9a: OFFLINE Z1 SDK kinematics probe (no LowCmd, DDS or motors)
+add_executable(b2z1_z1_kin_probe tools/z1_kin_probe.cpp)
+target_include_directories(b2z1_z1_kin_probe PRIVATE ${Z1_SDK_ROOT}/include)
+target_link_libraries(b2z1_z1_kin_probe PRIVATE ${Z1_SDK_LIB})

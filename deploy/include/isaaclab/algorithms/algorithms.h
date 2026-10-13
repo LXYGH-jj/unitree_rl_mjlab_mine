@@ -84,7 +84,7 @@ public:
 
         // Create input tensors
         std::vector<Ort::Value> input_tensors;
-        for(int i(0); i<input_names.size(); ++i)
+        for(std::size_t i = 0; i < input_names.size(); ++i)
         {
             const std::string name_str(input_names[i]);
             auto& input_data = obs.at(name_str);

@@ -2,6 +2,10 @@
 #include "FSM/State_Passive.h"
 #include "FSM/State_FixStand.h"
 #include "FSM/State_RLBase.h"
+#include "State_InteractiveRL.h"
+// M1.9b: SIM-ONLY Z1 IK stand FSM registration
+#include "State_ArmIKStand.h"
+#include "State_InteractiveArmIK.h"
 #include "FSM/State_SlowLieDown.h"
 
 std::unique_ptr<LowCmd_t> FSMState::lowcmd = nullptr;
@@ -74,6 +78,13 @@ int main(int argc, char** argv)
     const std::string network = vm["network"].as<std::string>();
     const bool loopback_network =
         (network == "lo" || network == "127.0.0.1" || network == "localhost");
+    // InteractiveRL v1 is SIM-ONLY. Check BEFORE any DDS channel is initialized.
+    const auto interactive_cfg = param::config["interactive"];
+    if (interactive_cfg && interactive_cfg["sim_only"] &&
+        interactive_cfg["sim_only"].as<bool>() && !loopback_network) {
+        spdlog::critical("InteractiveRL SIM config refuses non-loopback network '{}'.", network);
+        return 2;
+    }
     unitree::robot::ChannelFactory::Instance()->Init(0, network);
     if (loopback_network)
     {

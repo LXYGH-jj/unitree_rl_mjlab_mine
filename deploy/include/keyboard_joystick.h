@@ -31,6 +31,7 @@ public:
         if (key == "v") joystick.A(1);
         if (key == "p") joystick.B(1);
         if (key == "o") joystick.Y(1);
+        if (key == "g") joystick.X(1);  // M2.0a SIM-only FSM select (X.on_pressed)
         if (key == "l") {
             joystick.LT(1.0f);
             joystick.down(1);

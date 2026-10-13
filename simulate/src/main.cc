@@ -586,6 +586,20 @@ void PhysicsThread(mj::Simulate *sim, const char *filename)
       sim->Load(m, d, filename);
       ResetDataToInitialPose(m, d);
 
+      // M1.5 REAL-MOUNT INITIAL PAUSE. Model reset above already loads keyframe 0.
+      // This condition applies ONLY to the dedicated simulation scene.
+      if ((std::string(filename).find("scene_b2z1_interactive_real_mount.xml")
+           != std::string::npos) ||
+          (std::string(filename).find("scene_b2z1_interactive_training_mount_m15.xml")
+           != std::string::npos)) {
+        const int home_id = mj_name2id(m, mjOBJ_KEY, "home");
+        if (home_id != 0) {
+          std::cerr << "[M1.5] ERROR: expected home as keyframe 0" << std::endl;
+          std::exit(EXIT_FAILURE);
+        }
+        sim->run = 0;
+        std::cout << "[M1.5] real-mount home loaded; simulator PAUSED" << std::endl;
+      }
       // allocate ctrlnoise
       free(ctrlnoise);
       ctrlnoise = static_cast<mjtNum *>(malloc(sizeof(mjtNum) * m->nu));
