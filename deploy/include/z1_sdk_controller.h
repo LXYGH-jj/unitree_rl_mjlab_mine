@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <string>
 #include <memory>
 #include <mutex>
@@ -57,6 +58,10 @@ private:
     std::vector<float> command_dq_;
     std::vector<float> command_tau_;
     bool state_valid_ = false;
+    // This timestamp is an observation time, NOT proof of receipt of a fresh UDP packet.
+    // Independent packet freshness still requires verification prior to hardware enablement.
+    std::chrono::steady_clock::time_point last_state_observed_{};
+    bool sdk_fault_latched_ = false;
 
     void start_controller_process();
     void stop_controller_process();

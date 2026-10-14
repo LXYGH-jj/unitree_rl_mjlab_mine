@@ -6,6 +6,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <cmath>
+#include <stdexcept>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -67,10 +69,21 @@ Z1SdkController::Z1SdkController(const YAML::Node& cfg)
         return;
     }
 
-    enabled_ = true;
+    // Mandatory fail-closed opt-in. Legacy z1_sdk.enabled=true NEVER implies
+    // authorization to energize the Z1 arm or start z1_ctrl.
+    const bool hardware_ack = cfg["hardware_io_authorized"].as<bool>(false);
+    const char* env_ack = std::getenv("B2Z1_Z1_HARDWARE_ACK");
+    if (!hardware_ack || !env_ack ||
+        std::string(env_ack) != "Z1_BENCH_ELECTRICAL_CHECK_COMPLETE") {
+        throw std::runtime_error(
+            "Z1 hardware I/O blocked: requires explicit electrical inspection and "
+            "two-factor bench authorization. Do not set it for offline tests.");
+    }
     with_gripper_ = cfg["with_gripper"].as<bool>(with_gripper_);
     passive_on_shutdown_ = cfg["passive_on_shutdown"].as<bool>(passive_on_shutdown_);
     back_to_start_on_shutdown_ = cfg["back_to_start_on_shutdown"].as<bool>(back_to_start_on_shutdown_);
+    if (back_to_start_on_shutdown_)
+        throw std::runtime_error("Z1 auto backToStart on shutdown forbidden");
     launch_controller_process_ = cfg["launch_controller_process"].as<bool>(launch_controller_process_);
     controller_startup_delay_sec_ =
         cfg["controller_startup_delay_sec"].as<double>(controller_startup_delay_sec_);
@@ -91,28 +104,63 @@ Z1SdkController::Z1SdkController(const YAML::Node& cfg)
 
     start_controller_process();
 
-    arm_ = std::make_unique<UNITREE_ARM::unitreeArm>(with_gripper_);
-    arm_->sendRecvThread->start();
-    arm_->setFsm(UNITREE_ARM::ArmFSMState::PASSIVE);
-    arm_->sendRecv();
+    try {
+        arm_ = std::make_unique<UNITREE_ARM::unitreeArm>(with_gripper_);
+        // The vendor background thread is used ONLY for initial FSM transitions.
+        // It MUST be stopped before our 500 Hz control_loop begins sendRecv().
+        arm_->sendRecvThread->start();
+        if (!arm_->setFsm(UNITREE_ARM::ArmFSMState::PASSIVE))
+            throw std::runtime_error("Z1 PASSIVE transition failed; LOWCMD prohibited");
 
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        current_q_ = read_arm_array(arm_->lowstate->q, kArmJointCount);
-        current_dq_ = read_arm_array(arm_->lowstate->dq, kArmJointCount);
-        current_tau_ = read_arm_array(arm_->lowstate->tau, kArmJointCount);
-        command_q_ = current_q_;
-        state_valid_ = true;
+        if (!arm_->lowstate || !arm_->_ctrlComp || !arm_->_ctrlComp->udp ||
+            arm_->_ctrlComp->udp->isDisConnect ||
+            arm_->lowstate->q.size() < kArmJointCount ||
+            arm_->lowstate->dq.size() < kArmJointCount ||
+            arm_->lowstate->tau.size() < kArmJointCount ||
+            arm_->lowstate->errorstate.size() < kArmJointCount ||
+            arm_->lowstate->isMotorConnected.size() < kArmJointCount)
+            throw std::runtime_error("Z1 initial feedback missing/incomplete/disconnected");
+
+        for (size_t i=0; i<kArmJointCount; ++i) {
+            if (!std::isfinite(arm_->lowstate->q[i]) ||
+                !std::isfinite(arm_->lowstate->dq[i]) ||
+                !std::isfinite(arm_->lowstate->tau[i]) ||
+                (arm_->lowstate->errorstate[i] & static_cast<uint8_t>(~0x40u)) != 0 ||
+                arm_->lowstate->isMotorConnected[i] != 0)
+                throw std::runtime_error("Z1 invalid initial joint or motor error");
+        }
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            current_q_ = read_arm_array(arm_->lowstate->q, kArmJointCount);
+            current_dq_ = read_arm_array(arm_->lowstate->dq, kArmJointCount);
+            current_tau_ = read_arm_array(arm_->lowstate->tau, kArmJointCount);
+            command_q_ = current_q_;
+            command_dq_.assign(kArmJointCount, 0.0f);
+            command_tau_.assign(kArmJointCount, 0.0f);
+            last_state_observed_ = std::chrono::steady_clock::now();
+            state_valid_ = true;
+        }
+        // Initialize with the currently measured position; never use zeros.
+        arm_->setArmCmd(to_vec6(command_q_), Vec6::Zero(), Vec6::Zero());
+        if (!arm_->setFsm(UNITREE_ARM::ArmFSMState::LOWCMD))
+            throw std::runtime_error("Z1 LOWCMD transition failed; abort startup");
+
+        // CRITICAL: from this point control_loop is the sole sendRecv() owner.
+        arm_->sendRecvThread->shutdown();
+        running_.store(true);
+        control_thread_ = std::thread(&Z1SdkController::control_loop, this);
+        enabled_ = true;
+        spdlog::info("Z1 SDK bridge armed: one sendRecv owner; BENCH ONLY");
+    } catch (...) {
+        running_.store(false);
+        if (control_thread_.joinable()) control_thread_.join();
+        if (arm_ && arm_->sendRecvThread) {
+            // SDK background thread is only active during startup at this point.
+            arm_->sendRecvThread->shutdown();
+        }
+        stop_controller_process();
+        throw;
     }
-
-    arm_->setArmCmd(to_vec6(command_q_), to_vec6(command_dq_), to_vec6(command_tau_));
-    if (!arm_->setFsm(UNITREE_ARM::ArmFSMState::LOWCMD)) {
-        spdlog::warn("Failed to switch Z1 SDK to LOWCMD on startup.");
-    }
-
-    running_.store(true);
-    control_thread_ = std::thread(&Z1SdkController::control_loop, this);
-    spdlog::info("Z1 SDK bridge enabled.");
 }
 
 Z1SdkController::~Z1SdkController()
@@ -127,18 +175,15 @@ Z1SdkController::~Z1SdkController()
     }
 
     if (arm_) {
-        hold_current();
-        arm_->setArmCmd(to_vec6(command_q_), to_vec6(command_dq_), to_vec6(command_tau_));
-        arm_->sendRecv();
-
-        if (back_to_start_on_shutdown_) {
-            spdlog::info("Z1 SDK bridge moving arm back to start before shutdown.");
-            arm_->backToStart();
-        }
+        // The custom communication thread has already stopped.
+        // Restart vendor communication ONLY for an orderly FSM transition.
+        // Never backToStart automatically; gravity/drop hazards need bench review.
         if (passive_on_shutdown_) {
-            arm_->setFsm(UNITREE_ARM::ArmFSMState::PASSIVE);
+            arm_->sendRecvThread->start();
+            if (!arm_->setFsm(UNITREE_ARM::ArmFSMState::PASSIVE))
+                spdlog::critical("Z1 PASSIVE shutdown transition failed");
+            arm_->sendRecvThread->shutdown();
         }
-        arm_->sendRecvThread->shutdown();
     }
 
     stop_controller_process();
@@ -147,7 +192,10 @@ Z1SdkController::~Z1SdkController()
 bool Z1SdkController::has_state() const
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    return state_valid_;
+    return state_valid_ && !sdk_fault_latched_ &&
+           last_state_observed_ != std::chrono::steady_clock::time_point{} &&
+           std::chrono::steady_clock::now() - last_state_observed_ <=
+               std::chrono::milliseconds(100);
 }
 
 std::vector<float> Z1SdkController::current_q(const std::vector<float>& fallback) const
@@ -193,9 +241,21 @@ void Z1SdkController::update(
     }
 
     std::lock_guard<std::mutex> lock(mutex_);
-    command_q_ = resize_command(target_q, kArmJointCount);
-    command_dq_ = resize_command(target_dq, kArmJointCount);
-    command_tau_ = resize_command(target_tau, kArmJointCount);
+    if (sdk_fault_latched_ || !state_valid_)
+        throw std::runtime_error("Z1 SDK not ready or fault latched");
+    if (target_q.size() != kArmJointCount ||
+        (!target_dq.empty() && target_dq.size() != kArmJointCount) ||
+        (!target_tau.empty() && target_tau.size() != kArmJointCount))
+        throw std::invalid_argument("Z1 requires exactly six q (and optional six dq/tau)");
+    for (float v: target_q) if (!std::isfinite(v))
+        throw std::invalid_argument("Z1 nonfinite joint position target");
+    for (float v: target_dq) if (!std::isfinite(v))
+        throw std::invalid_argument("Z1 nonfinite joint velocity target");
+    for (float v: target_tau) if (!std::isfinite(v))
+        throw std::invalid_argument("Z1 nonfinite joint torque target");
+    // No physical motion command is enabled by this M2.4b1 source patch.
+    // Later M2.4b2 must integrate the validated per-mode hardware interlock.
+    throw std::runtime_error("M2.4b1 Z1 motion update LOCKED until independent bench qualification");
 }
 
 void Z1SdkController::hold_current()
@@ -227,14 +287,39 @@ void Z1SdkController::control_loop()
         }
 
         arm_->setArmCmd(to_vec6(command_q), to_vec6(command_dq), to_vec6(command_tau));
-        arm_->sendRecv();
-
+        arm_->sendRecv();  // ONLY owning thread calls this while LOWCMD active
+        // SDK's isDisConnect is a health flag, NOT a proven fresh-packet counter.
+        bool valid = arm_->lowstate && arm_->_ctrlComp && arm_->_ctrlComp->udp &&
+                     !arm_->_ctrlComp->udp->isDisConnect &&
+                     arm_->lowstate->q.size() >= kArmJointCount &&
+                     arm_->lowstate->dq.size() >= kArmJointCount &&
+                     arm_->lowstate->tau.size() >= kArmJointCount &&
+                     arm_->lowstate->errorstate.size() >= kArmJointCount &&
+                     arm_->lowstate->isMotorConnected.size() >= kArmJointCount;
+        if (valid) for (size_t i=0; i<kArmJointCount; ++i) {
+            valid = valid && std::isfinite(arm_->lowstate->q[i]) &&
+                std::isfinite(arm_->lowstate->dq[i]) &&
+                std::isfinite(arm_->lowstate->tau[i]) &&
+                (arm_->lowstate->errorstate[i] & static_cast<uint8_t>(~0x40u)) == 0 &&
+                arm_->lowstate->isMotorConnected[i] == 0;
+        }
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            current_q_ = read_arm_array(arm_->lowstate->q, kArmJointCount);
-            current_dq_ = read_arm_array(arm_->lowstate->dq, kArmJointCount);
-            current_tau_ = read_arm_array(arm_->lowstate->tau, kArmJointCount);
-            state_valid_ = true;
+            if (valid) {
+                current_q_ = read_arm_array(arm_->lowstate->q, kArmJointCount);
+                current_dq_ = read_arm_array(arm_->lowstate->dq, kArmJointCount);
+                current_tau_ = read_arm_array(arm_->lowstate->tau, kArmJointCount);
+                state_valid_ = true;
+                last_state_observed_ = clock::now();
+            } else {
+                state_valid_ = false;
+                sdk_fault_latched_ = true;
+            }
+        }
+        if (!valid) {
+            spdlog::critical("Z1 motor/SDK health fault; stop software commands; operator E-stop required");
+            running_.store(false);
+            break;
         }
 
         wake_time += std::chrono::duration_cast<clock::duration>(period);
