@@ -6,6 +6,7 @@
 // M1.9b: SIM-ONLY Z1 IK stand FSM registration
 #include "State_ArmIKStand.h"
 #include "State_InteractiveArmIK.h"
+#include "State_JointCtrlShadow.h"  // M2.4c2 SIM-ONLY preview FSM
 #include "FSM/State_SlowLieDown.h"
 
 std::unique_ptr<LowCmd_t> FSMState::lowcmd = nullptr;
@@ -84,6 +85,26 @@ int main(int argc, char** argv)
         interactive_cfg["sim_only"].as<bool>() && !loopback_network) {
         spdlog::critical("InteractiveRL SIM config refuses non-loopback network '{}'.", network);
         return 2;
+    }
+    // M2.4c2: candidate JOINTCTRL control is NOT qualified for real robot IO.
+    // Protect startup BEFORE any DDS, B2 mode release, Z1 SDK construction.
+    const auto jointctrl_hardware = param::config["z1_jointctrl"];
+    if (jointctrl_hardware && jointctrl_hardware["enabled"] &&
+        jointctrl_hardware["enabled"].as<bool>()) {
+        spdlog::critical("M2.4c2 REAL Z1 JOINTCTRL hardware path LOCKED; refusing before DDS init.");
+        return 2;
+    }
+    const auto jointctrl_shadow = param::config["jointctrl_shadow"];
+    if (jointctrl_shadow && !loopback_network) {
+        spdlog::critical("M2.4c2 jointctrl_shadow permitted ONLY on MuJoCo loopback 'lo'.");
+        return 2;
+    }
+    if (jointctrl_shadow) {
+        const auto legacy = param::config["z1_sdk"];
+        if (legacy && legacy["enabled"] && legacy["enabled"].as<bool>()) {
+            spdlog::critical("M2.4c2 refuses legacy Z1 LOWCMD when shadow FSM is configured.");
+            return 2;
+        }
     }
     unitree::robot::ChannelFactory::Instance()->Init(0, network);
     if (loopback_network)
