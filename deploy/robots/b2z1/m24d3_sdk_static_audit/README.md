@@ -2,7 +2,7 @@
 
 **Baseline:** `LXYGH-jj/unitree_rl_mjlab_mine`, branch `feature/b2z1-interactive-deploy`, commit `3a7ef8a`.
 
-**Scope:** produce a reproducible, useful disassembly/call-path report for **the developer's actual SDK binary** before designing any SDK integration. NO production controller sources or CMake edited. No real Z1 SDK construction, loading, motor IO, network, firmware, or bypass of `main.cpp` pre-DDS real JOINTCTRL lock. 
+**Scope:** produce a reproducible, useful disassembly/call-path report for **the developer's actual SDK binary** before designing any SDK integration. NO production controller sources or CMake edited. No real Z1 SDK construction, loading, motor IO, network, firmware, or bypass of `main.cpp` pre-DDS real JOINTCTRL lock.
 
 ## What we know from official supplied headers
 
