@@ -16,6 +16,7 @@
 #include <vector>
 #include <mutex>
 #include <limits>
+#include <unistd.h> // mock-only cooperative lease filename
 #include <spdlog/spdlog.h>
 
 namespace {
@@ -47,6 +48,17 @@ T cfg_or(const YAML::Node& cfg, const char* key, T fallback) {
 
 State_InteractiveArmIK::State_InteractiveArmIK(int state, std::string state_string)
     : FSMState(state, std::move(state_string)) {
+    mock_sim_mode_ = (getStateString() == "JointCtrlMockSim");
+    if (mock_sim_mode_) {
+        const auto mc = param::config["jointctrl_mock_sim"];
+        if (!mc || !mc["enabled"] || !mc["enabled"].as<bool>() ||
+            !mc["sim_only"] || !mc["sim_only"].as<bool>() ||
+            !mc["no_vendor_sdk_io"] || !mc["no_vendor_sdk_io"].as<bool>())
+            throw std::runtime_error("M2.4d5 requires explicit mock-only simulation config");
+        const auto real = param::config["z1_jointctrl"];
+        if (real && real["enabled"] && real["enabled"].as<bool>())
+            throw std::runtime_error("M2.4d5 refuses real Z1 JOINTCTRL");
+    }
     const char* ack = std::getenv("B2Z1_SIM_ONLY_ACK");
     if (!ack || std::string(ack) != "MUJOCO_LOOPBACK_NO_HARDWARE")
         throw std::runtime_error("M2.0a SIM ACK missing: export B2Z1_SIM_ONLY_ACK=MUJOCO_LOOPBACK_NO_HARDWARE");
@@ -154,6 +166,7 @@ void State_InteractiveArmIK::set_fault(const std::string& why) noexcept {
     publish_pending_ = false;
     arm_motion_locked_ = true;
     clear_motion();
+    if(mock_sim_gate_) mock_sim_gate_->disarm();
 }
 
 void State_InteractiveArmIK::enter() {
@@ -180,6 +193,19 @@ void State_InteractiveArmIK::enter() {
     snapshots_.reset();
     arm_hold_ = s.arm_q;
     capture_arm_goal(s);
+    if (mock_sim_mode_) {
+        const auto qlo=arm_model_.getJointQMin(), qhi=arm_model_.getJointQMax();
+        if(qlo.size()!=6 || qhi.size()!=6) throw std::runtime_error("M2.4d5 missing simulator joint limits");
+        b2z1::m24d5::Joint6 lo{},hi{};
+        for(int i=0;i<6;++i) {
+            lo[i]=qlo[i]+.015; hi[i]=qhi[i]-.015;
+            if(!(std::isfinite(lo[i]) && std::isfinite(hi[i]) && lo[i] < hi[i]))
+                throw std::runtime_error("M2.4d5 invalid simulated joint limits");
+        }
+        const auto lease=std::string("/tmp/b2z1_m24d5_mock_")+
+            std::to_string(static_cast<unsigned long>(::getuid()))+".lock";
+        mock_sim_gate_=std::make_unique<b2z1::m24d5::SimGate>(lo,hi,lease);
+    }
     commanded_ = s.leg_q;
     desired_ = makeLegTargets(Joint18{}).q_target_motor; // same M1.5n default
     prev_sim_tick_ = enter_sim_tick_ = s.tick_ms;
@@ -417,7 +443,21 @@ void State_InteractiveArmIK::motor_step(const SimSample& sample, Clock::time_poi
         motors[i].q(commanded_[i]); motors[i].dq(0.f); motors[i].tau(0.f);
         motors[i].kp(kp_); motors[i].kd(kd_);
     }
-    if(!arm_motion_locked_ && !fault_) {
+    if (mock_sim_mode_) {
+        if (!mock_sim_gate_ || arm_motion_locked_ || fault_)
+            throw std::runtime_error("M2.4d5 mock gate unavailable or arm safety locked");
+        b2z1::m24d5::Joint6 q{},dq{},goal{};
+        for(int i=0;i<6;++i) {
+            q[i]=sample.arm_q[i]; dq[i]=sample.arm_dq[i]; goal[i]=arm_goal_q_[i];
+        }
+        const auto next=mock_sim_gate_->step(sample.tick_ms,q,dq,goal,Clock::now());
+        if(next) for(int i=0;i<6;++i) arm_cmd_[i]=(*next)[i];
+        if ((motor_steps_ % 200u)==0u)
+            spdlog::info("[M24d5] SIM mock gate sent={} measured_q0={:.4f} gated_target_q0={:.4f} (NO REAL Z1 IO)",
+                mock_sim_gate_->commandsEmitted(),q[0],arm_cmd_[0]);
+        // Below, the existing 20-slot MuJoCo LowCmd publisher transmits this
+        // vetted MOCK q to the simulator. No Z1 vendor network call exists.
+    } else if(!arm_motion_locked_ && !fault_) {
         for(int i=0;i<6;++i)
             arm_cmd_[i]+=std::clamp(arm_goal_q_[i]-arm_cmd_[i],-max_arm_step_rad_,max_arm_step_rad_);
     }
@@ -469,8 +509,10 @@ void State_InteractiveArmIK::run() {
             next_control_=now;
         }
         next_control_+=kControlPeriod;
-        if(fault_)hold_on_policy_fault();
-        else motor_step(state,now);
+        if(fault_) {
+            if(mock_sim_mode_) {publish_pending_=false;return;} // no publish after mock gate fault
+            hold_on_policy_fault(); // existing legacy simulator mode unchanged
+        } else motor_step(state,now);
     } catch (const std::exception& e) {
         set_fault(e.what());
     }
@@ -486,6 +528,7 @@ void State_InteractiveArmIK::post_run() {
 }
 
 void State_InteractiveArmIK::exit() {
+    if(mock_sim_gate_) {mock_sim_gate_->disarm();mock_sim_gate_.reset();}
     clear_motion();
     policy_ready_=false;
     publish_pending_=false;

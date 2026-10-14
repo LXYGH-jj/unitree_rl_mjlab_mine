@@ -3,6 +3,7 @@
 // Strictly SIM/lo only, never a physical robot controller.
 #include "FSM/FSMState.h"
 #include "interactive_pipeline.h"
+#include "m24d5_sim_gate.h"
 #include "interactive_snapshot_store.h"
 #include "isaaclab/algorithms/algorithms.h"
 #include <unitree_arm_sdk/model/ArmModel.h>
@@ -13,7 +14,7 @@
 #include <memory>
 #include <string>
 
-class State_InteractiveArmIK final : public FSMState {
+class State_InteractiveArmIK : public FSMState {
 public:
     State_InteractiveArmIK(int state, std::string state_string);
     ~State_InteractiveArmIK() = default;
@@ -89,6 +90,8 @@ private:
     bool walk_active_{false};
     bool walk_rearm_{false};
     bool has_walked_{false};
+    bool mock_sim_mode_{false};
+    std::unique_ptr<b2z1::m24d5::SimGate> mock_sim_gate_{};
 
     float kp_{360.f}, kd_{5.f};
     float arm_kp_{90.f}, arm_kd_{6.f};

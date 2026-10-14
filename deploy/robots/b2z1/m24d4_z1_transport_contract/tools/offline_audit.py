@@ -18,7 +18,15 @@ def main(repo):
     cm = (module / "CMakeLists.txt").read_text()
     check("REAL Z1 JOINTCTRL hardware path LOCKED" in main_cpp and "return 2;" in main_cpp,
           "Pre-DDS JOINTCTRL real hardware refusal preserved")
-    check("m24d4_z1_transport_contract" not in cmake, "Production b2z1_ctrl has no new transport linked")
+    linked = "m24d4_z1_transport_contract/src/z1_transport_contract.cpp" in cmake
+    if linked:
+        check("m24d5_jointctrl_mock_fsm/src/m24d5_sim_gate.cpp" in cmake
+              and "M2.4d5 refuses non-loopback" in main_cpp
+              and main_cpp.find("M2.4d5 refuses non-loopback") < main_cpp.find("ChannelFactory::Instance()->Init"),
+              "Production links mock transport ONLY with pre-DDS SIM-only refusal")
+    else:
+        check("m24d4_z1_transport_contract" not in cmake,
+              "Earlier M2.4d4 isolated build retains no production linkage")
     check("unitree_arm_sdk" not in h + cpp + cm and "startTrack" not in h + cpp + cm,
           "No vendor header, constructor, mode switch or sendRecv used")
     check("socket(" not in cpp and "sendto(" not in cpp and "recvfrom(" not in cpp,

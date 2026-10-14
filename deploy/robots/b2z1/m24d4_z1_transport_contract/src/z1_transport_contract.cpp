@@ -32,6 +32,8 @@ void MockZ1Transport::emit(const JointCommand& command) {
     std::lock_guard<std::mutex> lock(mutex_);
     if(fail_next_emit_) { fail_next_emit_ = false; throw std::runtime_error("injected mock sink failure"); }
     if(disarmed_) throw std::runtime_error("mock sink logically disarmed");
+    // Fixed 64-entry history: O(1) push/evict; long sim cannot accumulate commands.
+    if(commands_.size() == kMaxCommandHistory) commands_.pop_front();
     commands_.push_back(command);
 }
 void MockZ1Transport::disarm() noexcept {
@@ -39,7 +41,13 @@ void MockZ1Transport::disarm() noexcept {
     disarmed_ = true;
 }
 std::vector<JointCommand> MockZ1Transport::recordedCommands() const {
-    std::lock_guard<std::mutex> lock(mutex_); return commands_;
+    std::lock_guard<std::mutex> lock(mutex_);
+    return {commands_.begin(), commands_.end()};
+}
+std::optional<JointCommand> MockZ1Transport::latestCommand() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if(commands_.empty()) return std::nullopt;
+    return commands_.back();
 }
 std::size_t MockZ1Transport::pendingFrames() const {
     std::lock_guard<std::mutex> lock(mutex_); return queue_.size();

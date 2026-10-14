@@ -57,6 +57,8 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/m24b2_jointctrl_offline/include
   ${PROJECT_SOURCE_DIR}/m24c3_jointctrl_runtime/include
   ${PROJECT_SOURCE_DIR}/m24d1_z1_transport/include
+  ${PROJECT_SOURCE_DIR}/m24d4_z1_transport_contract/include
+  ${PROJECT_SOURCE_DIR}/m24d5_jointctrl_mock_fsm/include
   include
   ${ONNXRUNTIME_DIR}/include
   ${PROJECT_SOURCE_DIR}/../../include/
@@ -99,6 +101,8 @@ target_sources(${PROJECT_NAME}_lib PRIVATE
   ${PROJECT_SOURCE_DIR}/m24c3_jointctrl_runtime/src/z1_jointctrl_session.cpp
   ${PROJECT_SOURCE_DIR}/m24d1_z1_transport/src/z1_rx_validation.cpp
   ${PROJECT_SOURCE_DIR}/m24d1_z1_transport/src/z1_transport_session.cpp
+  ${PROJECT_SOURCE_DIR}/m24d4_z1_transport_contract/src/z1_transport_contract.cpp
+  ${PROJECT_SOURCE_DIR}/m24d5_jointctrl_mock_fsm/src/m24d5_sim_gate.cpp
   ${PROJECT_SOURCE_DIR}/m24d1_z1_transport/src/z1_sdk_getter_snapshot.cpp
   ${B2Z1_DEPLOY_ROOT}/interactive_b2z1/sim_closed_loop/joint_target_guard.cpp
 )

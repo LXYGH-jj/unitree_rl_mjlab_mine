@@ -1,4 +1,6 @@
 #include "FSM/CtrlFSM.h"
+#include <cstdlib>
+#include <string>
 #include "FSM/State_Passive.h"
 #include "FSM/State_FixStand.h"
 #include "FSM/State_RLBase.h"
@@ -6,7 +8,8 @@
 // M1.9b: SIM-ONLY Z1 IK stand FSM registration
 #include "State_ArmIKStand.h"
 #include "State_InteractiveArmIK.h"
-#include "State_JointCtrlShadow.h"  // M2.4c2 SIM-ONLY preview FSM
+#include "State_JointCtrlShadow.h"
+#include "State_JointCtrlMockSim.h" // M2.4d5 opt-in MuJoCo ONLY  // M2.4c2 SIM-ONLY preview FSM
 #include "FSM/State_SlowLieDown.h"
 
 std::unique_ptr<LowCmd_t> FSMState::lowcmd = nullptr;
@@ -103,6 +106,24 @@ int main(int argc, char** argv)
         const auto legacy = param::config["z1_sdk"];
         if (legacy && legacy["enabled"] && legacy["enabled"].as<bool>()) {
             spdlog::critical("M2.4c2 refuses legacy Z1 LOWCMD when shadow FSM is configured.");
+            return 2;
+        }
+    }
+    // M2.4d5: simulation-only FSM config MUST be refused BEFORE any B2 DDS.
+    const auto mock_sim = param::config["jointctrl_mock_sim"];
+    if (mock_sim) {
+        const auto legacy = param::config["z1_sdk"];
+        if (!loopback_network ||
+            !mock_sim["enabled"] || !mock_sim["enabled"].as<bool>() ||
+            !mock_sim["sim_only"] || !mock_sim["sim_only"].as<bool>() ||
+            !mock_sim["no_vendor_sdk_io"] || !mock_sim["no_vendor_sdk_io"].as<bool>() ||
+            (legacy && legacy["enabled"] && legacy["enabled"].as<bool>())) {
+            spdlog::critical("M2.4d5 refuses non-loopback or non-mock Z1 simulation configuration before DDS.");
+            return 2;
+        }
+        const char* sim_ack = std::getenv("B2Z1_SIM_ONLY_ACK");
+        if (!sim_ack || std::string(sim_ack) != "MUJOCO_LOOPBACK_NO_HARDWARE") {
+            spdlog::critical("M2.4d5 requires explicit simulation-only ACK before DDS.");
             return 2;
         }
     }

@@ -51,14 +51,17 @@ public:
     std::optional<ReceivedFrame> popFrame() override;
     void emit(const JointCommand& command) override;
     void disarm() noexcept override;
+    // Last N mock commands only: bounded-memory diagnostics, NEVER an actuation log.
     std::vector<JointCommand> recordedCommands() const;
+    std::optional<JointCommand> latestCommand() const;
     std::size_t pendingFrames() const;
     bool softwareDisarmed() const;
     void failNextEmit();
 private:
     mutable std::mutex mutex_;
     std::deque<ReceivedFrame> queue_;
-    std::vector<JointCommand> commands_;
+    std::deque<JointCommand> commands_;
+    static constexpr std::size_t kMaxCommandHistory = 64;
     std::uint64_t next_index_ = 1;
     bool disarmed_ = false;
     bool fail_next_emit_ = false;
