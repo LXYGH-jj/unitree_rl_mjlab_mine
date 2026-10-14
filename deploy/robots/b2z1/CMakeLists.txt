@@ -56,6 +56,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/../../interactive_b2z1/m24c_shadow_integration/include
   ${PROJECT_SOURCE_DIR}/m24b2_jointctrl_offline/include
   ${PROJECT_SOURCE_DIR}/m24c3_jointctrl_runtime/include
+  ${PROJECT_SOURCE_DIR}/m24d1_z1_transport/include
   include
   ${ONNXRUNTIME_DIR}/include
   ${PROJECT_SOURCE_DIR}/../../include/
@@ -96,6 +97,9 @@ target_sources(${PROJECT_NAME}_lib PRIVATE
   ${B2Z1_DEPLOY_ROOT}/interactive_b2z1/m24c_shadow_integration/src/m24c_shadow_bridge.cpp
   ${PROJECT_SOURCE_DIR}/m24b2_jointctrl_offline/src/z1_jointctrl_safety.cpp
   ${PROJECT_SOURCE_DIR}/m24c3_jointctrl_runtime/src/z1_jointctrl_session.cpp
+  ${PROJECT_SOURCE_DIR}/m24d1_z1_transport/src/z1_rx_validation.cpp
+  ${PROJECT_SOURCE_DIR}/m24d1_z1_transport/src/z1_transport_session.cpp
+  ${PROJECT_SOURCE_DIR}/m24d1_z1_transport/src/z1_sdk_getter_snapshot.cpp
   ${B2Z1_DEPLOY_ROOT}/interactive_b2z1/sim_closed_loop/joint_target_guard.cpp
 )
 target_compile_definitions(${PROJECT_NAME}_lib PUBLIC
