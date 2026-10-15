@@ -14,6 +14,7 @@ public:
     explicit Impl(bool with_gripper):with_gripper_(with_gripper){}
     bool with_gripper_{false};
     bool started_{false};
+    bool stop_attempted_{false};
     bool vendor_thread_running_{false};
     std::unique_ptr<UNITREE_ARM::unitreeArm> arm_;
     std::thread::id owner_{};
@@ -31,7 +32,8 @@ bool SdkBridge::stop() noexcept {
 #ifndef M24E2B_ENABLE_HARDWARE_SDK
     return false;
 #else
-    if(!impl_->arm_) return false;
+    if(!impl_->arm_ || impl_->stop_attempted_) return false;
+    impl_->stop_attempted_=true;
     auto& arm=*impl_->arm_;
     // No attempts to drive a return-to-home trajectory on shutdown.
     // A lost UDP connection cannot be made safe by sending more UDP packets.
