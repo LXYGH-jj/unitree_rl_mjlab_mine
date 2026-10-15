@@ -24,7 +24,8 @@ constexpr double kBenchMeasuredVelocityRadS = 0.30;
 constexpr int kBenchTemperatureC = 60;
 
 void checkBenchCommand(const UNITREE_ARM::unitreeArm& arm,
-                       const ::Vec6& q, const ::Vec6& dq, const ::Vec6& tau_ff) {
+                       const ::Vec6& q, const ::Vec6& dq, const ::Vec6& tau_ff,
+                       const char* phase) {
     const auto* comp=arm._ctrlComp;
     const auto* feedback=arm.lowstate;
     const auto* cmd=arm.lowcmd;
@@ -51,10 +52,28 @@ void checkBenchCommand(const UNITREE_ARM::unitreeArm& arm,
             throw std::runtime_error("Z1 bench guard: observed torque J"+std::to_string(i+1)+
                                      " measured="+std::to_string(measured_tau)+
                                      " limit="+std::to_string(kBenchObservedTauNm));
-        if(std::abs(q[i]-measured_q)>kBenchTargetErrorRad ||
-           std::abs(dq[i])>kBenchDesiredVelocityRadS ||
-           std::abs(measured_dq)>kBenchMeasuredVelocityRadS)
-            throw std::runtime_error("Z1 bench guard: position/velocity envelope J"+std::to_string(i+1));
+        const double position_error=q[i]-measured_q;
+        const bool position_exceeded=std::abs(position_error)>kBenchTargetErrorRad;
+        const bool command_velocity_exceeded=std::abs(dq[i])>kBenchDesiredVelocityRadS;
+        const bool measured_velocity_exceeded=std::abs(measured_dq)>kBenchMeasuredVelocityRadS;
+        if(position_exceeded || command_velocity_exceeded || measured_velocity_exceeded) {
+            throw std::runtime_error(
+                "Z1 bench guard: position/velocity envelope J"+std::to_string(i+1)+
+                " phase="+phase+
+                " position_exceeded="+std::to_string(position_exceeded)+
+                " command_velocity_exceeded="+std::to_string(command_velocity_exceeded)+
+                " measured_velocity_exceeded="+std::to_string(measured_velocity_exceeded)+
+                " q_cmd="+std::to_string(q[i])+
+                " q_meas="+std::to_string(measured_q)+
+                " q_error="+std::to_string(position_error)+
+                " q_error_limit="+std::to_string(kBenchTargetErrorRad)+
+                " dq_cmd="+std::to_string(dq[i])+
+                " dq_cmd_limit="+std::to_string(kBenchDesiredVelocityRadS)+
+                " dq_meas="+std::to_string(measured_dq)+
+                " dq_meas_limit="+std::to_string(kBenchMeasuredVelocityRadS)+
+                " tau_meas="+std::to_string(measured_tau)+
+                " tau_ff="+std::to_string(tau_ff[i]));
+        }
         // Z1 V2 protocol scales kp, kd before applying PD.
         // Prediction uses the most recent SDK getter sample, NOT proven fresh RX,
         // so this guard is never a hard actuator torque/current limit.
@@ -180,7 +199,7 @@ void SdkBridge::start(){
     std::cerr << "[M2.4e2k] SDK model startup feedforward Nm:";
     for(int i=0;i<6;++i)std::cerr << " J" << i+1 << "=" << compensated[i];
     std::cerr << '\n';
-    checkBenchCommand(arm,initial,::Vec6::Zero(),compensated);
+    checkBenchCommand(arm,initial,::Vec6::Zero(),compensated,"startup-passive");
     arm.setArmCmd(initial,::Vec6::Zero(),compensated);
     if(!arm.setFsm(UNITREE_ARM::ArmFSMState::LOWCMD))
         throw std::runtime_error("LOWCMD transition failed");
@@ -295,11 +314,11 @@ Feedback SdkBridge::exchange(const Command& c){
     const auto guarded=m24e2h::combineGravityTorque(gravity,extra);
     for(int i=0;i<6;i++)tau[i]=guarded[i];
     // Before any new low-level command, veto excessive predicted PD+feedforward.
-    checkBenchCommand(*impl_->arm_,q,qd,tau);
+    checkBenchCommand(*impl_->arm_,q,qd,tau,"pre-send");
     impl_->arm_->setArmCmd(q,qd,tau);
     impl_->arm_->sendRecv(); // TX+RX; NEVER passive observation
     // Post-send observation check, still not an independent hardware watchdog.
-    checkBenchCommand(*impl_->arm_,q,qd,tau);
+    checkBenchCommand(*impl_->arm_,q,qd,tau,"post-send");
     const auto* l=impl_->arm_->lowstate;
     auto* comp=impl_->arm_->_ctrlComp;
     if(!l||!comp||!comp->udp||l->q.size()<6||l->dq.size()<6||l->tau.size()<6||
