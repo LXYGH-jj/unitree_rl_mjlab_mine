@@ -107,9 +107,19 @@ def main():
                     qd = [float(x) for x in _[14:20]]
                     if not all(math.isfinite(x) for x in qd):
                         raise RuntimeError("Nonfinite Z1 velocity feedback")
+                    sensed = request(sock, f"V1 SENSE {req}")
+                    if len(sensed) != 16 or sensed[:2] != ["V1", "SENSE"] or sensed[2] != str(req):
+                        raise RuntimeError(f"Invalid Z1 torque telemetry: {sensed}")
+                    sensed_tau = [float(v) for v in sensed[4:10]]
+                    temperatures = [int(v) for v in sensed[10:16]]
+                    if not all(math.isfinite(v) for v in sensed_tau):
+                        raise RuntimeError("Nonfinite Z1 torque telemetry")
                     deviation = max(abs(x-y) for x, y in zip(current, origin))
                     speed = max(abs(v) for v in qd)
-                    print(f"\nq={current} max_start_error={deviation:.4f}rad max_speed={speed:.4f}rad/s", flush=True)
+                    print(f"\nq={current} max_start_error={deviation:.4f}rad"
+                          f" max_speed={speed:.4f}rad/s"
+                          f"\nfeedback_tau={sensed_tau} temperature_C={temperatures}",
+                          flush=True)
                 elif key == "d":
                     armed = False
                     reference = list(current)
