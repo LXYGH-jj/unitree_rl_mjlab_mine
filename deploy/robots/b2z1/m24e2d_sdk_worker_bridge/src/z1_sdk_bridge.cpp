@@ -199,12 +199,25 @@ void SdkBridge::start(){
     std::cerr << "[M2.4e2k] SDK model startup feedforward Nm:";
     for(int i=0;i<6;++i)std::cerr << " J" << i+1 << "=" << compensated[i];
     std::cerr << '\n';
+    // Observe SDK getter snapshots across the official FSM transition.
+    // One-time diagnostics only: NO new SDK sendRecv, gain changes or motor commands.
+    const auto log_joint3=[&arm](const char* phase) {
+        if(!arm.lowstate || arm.lowstate->q.size()<3 ||
+           arm.lowstate->dq.size()<3 || arm.lowstate->tau.size()<3) return;
+        std::cerr << "[M2.4e2k] J3 transition " << phase
+                  << " q=" << arm.lowstate->q[2]
+                  << " dq=" << arm.lowstate->dq[2]
+                  << " tau_feedback=" << arm.lowstate->tau[2] << '\n';
+    };
+    log_joint3("before-lowcmd");
     checkBenchCommand(arm,initial,::Vec6::Zero(),compensated,"startup-passive");
     arm.setArmCmd(initial,::Vec6::Zero(),compensated);
     if(!arm.setFsm(UNITREE_ARM::ArmFSMState::LOWCMD))
         throw std::runtime_error("LOWCMD transition failed");
+    log_joint3("after-setFsm");
     arm.sendRecvThread->shutdown();  // exclusive sendRecv owner after this point
     impl_->vendor_thread_running_=false;
+    log_joint3("after-sdk-thread-stop");
     // Observed vendor gains after setFsm(LOWCMD); configure ALORE ONLY after
     // this transition, with the SDK background sender stopped.
     if(impl_->gain_profile_==GainProfile::AloreV2) {
