@@ -92,10 +92,17 @@ def mock_check(worker):
                     raise RuntimeError(f"Unexpected target ack: {ack}")
                 time.sleep(0.02)
         until = time.monotonic() + 3
-        while not csv_path.exists() and time.monotonic() < until:
-            time.sleep(0.02)
-        if not csv_path.exists():
-            raise RuntimeError("Mock session ended without writing trace CSV")
+        previous_size = -1
+        stable_checks = 0
+        while time.monotonic() < until:
+            size = csv_path.stat().st_size if csv_path.exists() else 0
+            stable_checks = stable_checks + 1 if size > 0 and size == previous_size else 0
+            if stable_checks >= 3:
+                break
+            previous_size = size
+            time.sleep(0.05)
+        if stable_checks < 3:
+            raise RuntimeError("Mock session did not finish writing trace CSV")
         rows = analyze(csv_path)
         active = [r for r in rows if r["track"] == "1"]
         if len(active) < 10:
