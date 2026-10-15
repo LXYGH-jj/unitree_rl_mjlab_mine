@@ -24,15 +24,15 @@ WORKER_JOINT_LO = (-2.618, 0.0, -2.8798, -1.5184, -1.3439, -2.7925)
 WORKER_JOINT_HI = ( 2.618, 2.9671, 0.0, 1.5184, 1.3439, 2.7925)
 
 
-def require_valid_return_pose(q):
-    """Refuse an invalid saved startup target before transmitting it to Worker."""
+def require_valid_target_pose(q, action):
+    """Reject an invalid measured/return target BEFORE sending it to the Worker."""
     for i, (angle, lower, upper) in enumerate(
             zip(q, WORKER_JOINT_LO, WORKER_JOINT_HI)):
         if not math.isfinite(angle) or not lower <= angle <= upper:
             raise RuntimeError(
-                f"RETURN REFUSED: saved startup J{i + 1}={angle:+.8f} rad "
+                f"{action} REFUSED: J{i + 1}={angle:+.8f} rad "
                 f"outside Worker target range [{lower:+.6f}, {upper:+.6f}]. "
-                "No return TARGET sent; closing client for Worker PASSIVE handoff."
+                "No TARGET sent; closing client for Worker PASSIVE handoff."
             )
 
 
@@ -114,6 +114,7 @@ def main():
                     joint = int(key)-1
                     print(f"\nSelected joint {joint+1}", flush=True)
                 elif key == "a" and not armed:
+                    require_valid_target_pose(current, "ARM")
                     reference = list(current)
                     armed = True
                     print("\nARMED at measured joint positions", flush=True)
@@ -121,7 +122,7 @@ def main():
                     # A measured startup pose may lie slightly beyond a strict
                     # Worker target limit (e.g. J3=+0.001 with maximum 0).
                     # Do not silently clamp toward a mechanical boundary.
-                    require_valid_return_pose(origin)
+                    require_valid_target_pose(origin, "RETURN")
                     reference = list(origin)
                     print("\nReturning toward startup joint posture; inspect collision path.", flush=True)
                 elif key == "s":
