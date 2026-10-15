@@ -184,7 +184,7 @@ void SdkBridge::start(){
         throw std::runtime_error("LOWCMD transition failed");
     arm.sendRecvThread->shutdown();  // exclusive sendRecv owner after this point
     impl_->vendor_thread_running_=false;
-    // setFsm(LOWCMD) restores SDK vendor gains. Configure ALORE ONLY after
+    // Observed vendor gains after setFsm(LOWCMD); configure ALORE ONLY after
     // this transition, with the SDK background sender stopped.
     if(impl_->gain_profile_==GainProfile::AloreV2) {
         // ALORE Deployment/Z1_deploy/z1_control.py:
@@ -261,6 +261,23 @@ Feedback SdkBridge::exchange(const Command& c){
         throw std::runtime_error("SDK sendRecv owner violation");
     for(int i=0;i<6;i++) if(!std::isfinite(c.q[i])||!std::isfinite(c.dq[i])||
        !std::isfinite(c.tau[i]))throw std::invalid_argument("nonfinite SDK command");
+    // The hardware log previously showed vendor gains despite alore-v2 being
+    // requested. Never continue to send commands with an unexpected profile.
+    if(impl_->gain_profile_==GainProfile::AloreV2) {
+        const auto* low=impl_->arm_->lowcmd;
+        const double expected_kp[6]={264./25.6,328./25.6,264./25.6,
+                                     264./25.6,264./25.6,264./25.6};
+        const double expected_kd[6]={1.5/0.0128,3.0/0.0128,1.5/0.0128,
+                                     1.5/0.0128,1.5/0.0128,1.5/0.0128};
+        if(!low || low->kp.size()<6 || low->kd.size()<6)
+            throw std::runtime_error("ALORE gain profile lost in SDK LOWCMD");
+        for(int i=0;i<6;++i)
+            if(!std::isfinite(low->kp[i]) || !std::isfinite(low->kd[i]) ||
+               std::abs(low->kp[i]-expected_kp[i])>1e-7 ||
+               std::abs(low->kd[i]-expected_kd[i])>1e-7)
+                throw std::runtime_error("ALORE gain profile changed while running J"+
+                                         std::to_string(i+1));
+    }
     ::Vec6 q,qd,tau;
     for(int i=0;i<6;i++){q[i]=c.q[i];qd[i]=c.dq[i];}
     if(!impl_->arm_->_ctrlComp || !impl_->arm_->_ctrlComp->armModel)
