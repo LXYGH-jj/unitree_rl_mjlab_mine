@@ -84,8 +84,9 @@ def mock_check(worker):
             target[4] += 0.005   # J5 mock-only setpoint
             if not all(math.isfinite(v) for v in target):
                 raise RuntimeError("Bad mock starting pose")
-            values = " ".join(f"{v:.10f}" for v in target)
-            for seq in range(1, 101):
+            for seq in range(1, 201):
+                goal = target if seq <= 100 else start
+                values = " ".join(f"{v:.10f}" for v in goal)
                 msg = f"V1 TARGET {seq} {time.monotonic_ns()} 1 {values}"
                 ack = request(conn, msg)
                 if ack[:3] != ["V1", "ACK", str(seq)]:
@@ -108,9 +109,11 @@ def mock_check(worker):
         if len(active) < 10:
             raise RuntimeError("Insufficient TRACK samples in mock run")
         final_cmd = float(active[-1]["qcmd_J5"])
-        if abs(final_cmd - target[4]) > 1e-3:
-            raise RuntimeError(f"Mock Planner did not settle: {final_cmd} vs {target[4]}")
-        print("MOCK PASS: repeated fixed target converged; CSV capture complete.")
+        if abs(final_cmd - start[4]) > 1e-3:
+            raise RuntimeError(f"Mock Planner did not return: {final_cmd} vs {start[4]}")
+        if max(float(r["qcmd_J5"]) for r in active) < start[4] + 0.004:
+            raise RuntimeError("Mock Planner never reached positive J5 target")
+        print("MOCK PASS: J5 moved to +0.005 rad, returned to start, and CSV captured.")
         print("No physical motor behavior was tested.")
     finally:
         proc.terminate()
