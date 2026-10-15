@@ -227,15 +227,17 @@ struct State {
         r.tau_meas=fb.tau;
         trace->add(r);
     }
-    void stop_sdk() noexcept {
+    bool stop_sdk() noexcept {
 #ifdef M24E2D_ENABLE_HARDWARE_SDK
         if(sdk_mode && sdk) {
             const bool confirmed=sdk->stop();
             std::cerr << "[M2.4e2j] SDK PASSIVE "
                       << (confirmed?"confirmed":"NOT CONFIRMED; operator must use physical E-stop/support")
                       << '\n';
+            return confirmed;
         }
 #endif
+        return !sdk_mode;
     }
     void step() {
         const auto now=Clock::now();
@@ -407,8 +409,11 @@ void session(int fd,bool sdk_mode,bool has_gripper,bool alore_gain,const std::st
     }
     // Covers Ctrl+C, peer close, IPC send failure, TARGET watchdog errors and
     // normal end-of-session. Actual hardware safety still needs operator oversight.
-    state.stop_sdk();
-    if(state.trace) state.trace->save(state.trace_csv_path); // after PASSIVE only
+    const bool safe_to_write=state.stop_sdk();
+    if(state.trace && safe_to_write)
+        state.trace->save(state.trace_csv_path); // no disk I/O while motors may be active
+    else if(state.trace && !safe_to_write)
+        std::cerr<<"[Z1 TRACE] CSV skipped: SDK PASSIVE NOT CONFIRMED\n";
 }
 } // namespace
 int main(int argc,char** argv){
