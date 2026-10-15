@@ -77,9 +77,11 @@ def main():
         origin = list(q)  # Return-to-start means this measured posture, NOT factory home.
         reference = list(q)
         req, seq, joint, armed = 1, 0, 0, False
+        sent_active_target = False
         print("M2.4e2j Z1 bench keyboard. Physical support and E-stop REQUIRED.")
         print("1-6 select joint; a ARM; +/- jog 0.005rad; r RETURN to start; s STATUS; d DISARM; q QUIT.")
         print("'r' requires ARM; returns at Worker planner limits, never auto-homes on exit.")
+        print("Before 'a', client only requests feedback: it sends NO TARGET packets.")
         print("No movement commands until explicit a. Keep tool/operator clear.")
         print("Initial q:", " ".join(f"{v:+.3f}" for v in q), flush=True)
         fd = sys.stdin.fileno()
@@ -121,21 +123,33 @@ def main():
                         print(f"\nJoint {joint+1} target {reference[joint]:+.4f}", flush=True)
                 elif key == "q":
                     break
-                seq += 1
-                target(sock, seq, reference if armed else current, armed)
+                # Do not transmit any TARGET until the operator explicitly arms.
+                # Once armed, maintain the existing <=150ms target watchdog.
+                # On disarm, send exactly one enable=0 target.
+                if armed:
+                    seq += 1
+                    target(sock, seq, reference, True)
+                    sent_active_target = True
+                elif sent_active_target:
+                    seq += 1
+                    target(sock, seq, current, False)
+                    sent_active_target = False
                 # Do not silently suppress link or target errors.
                 remaining = PERIOD - (time.monotonic()-tick)
                 if remaining > 0:
                     time.sleep(remaining)
         finally:
             termios.tcsetattr(fd, termios.TCSADRAIN, saved)
-            try:
-                req += 1
-                current, _ = state(sock, req)
-                seq += 1
-                target(sock, seq, current, False)
-            except (OSError, ValueError, RuntimeError):
-                pass
+            # When no joint command was ever armed, closing the socket is enough
+            # to end this SDK session; do not create a new TARGET on shutdown.
+            if sent_active_target:
+                try:
+                    req += 1
+                    current, _ = state(sock, req)
+                    seq += 1
+                    target(sock, seq, current, False)
+                except (OSError, ValueError, RuntimeError):
+                    pass
             print("\nKeyboard client stopped. Verify Worker PASSIVE confirmation.", flush=True)
 
 
