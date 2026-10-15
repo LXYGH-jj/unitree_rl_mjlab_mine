@@ -60,7 +60,11 @@ Command Planner::tick(const Feedback& f,Time now,double dt){
         const double next_v=std::clamp(desired_v,last_velocity_[i]-step_a,last_velocity_[i]+step_a);
         const double proposed=std::clamp(q_command_[i]+next_v*dt,limits_.lo[i],limits_.hi[i]);
         if(std::abs(proposed-f.q[i])>0.30) reject("tracking error exceeds offline guard");
-        out.dq[i]=(proposed-q_command_[i])/dt;
+        // Reconstruction via position delta / dt can exceed velocity_max by
+        // floating-point roundoff even though desired_v was clamped.
+        // Keep the emitted velocity within the same original bound.
+        out.dq[i]=std::clamp((proposed-q_command_[i])/dt,
+                             -limits_.velocity_max[i],limits_.velocity_max[i]);
         q_command_[i]=proposed;last_velocity_[i]=out.dq[i];out.q[i]=proposed;
     }
     out.track=true;return out;
