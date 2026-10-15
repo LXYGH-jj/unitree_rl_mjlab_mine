@@ -156,11 +156,6 @@ struct State {
 #ifdef M24E2D_ENABLE_HARDWARE_SDK
     std::unique_ptr<m24e2b::SdkBridge> sdk;
     m24e2b::Feedback latest{};
-    // During LOWCMD, track=false in our planner does NOT make the vendor
-    // controller passive. Keep a fixed measured pose until the user arms.
-    Vec6 sdk_hold_q{};
-    bool sdk_hold_initialized{false};
-    bool sdk_was_tracking{false};
 #endif
     explicit State(bool use_sdk,bool has_gripper,bool alore_gain,std::string csv_path):
         planner(development_limits(use_sdk)),sdk_mode(use_sdk),
@@ -183,14 +178,12 @@ struct State {
                                     : m24e2b::GainProfile::VendorDefault);
         sdk->start(); // PHYSICAL I/O AND MODE SWITCH: runtime operator gate checked first.
         latest=sdk->initialFeedback();
-        sdk_hold_q=latest.q;
-        sdk_hold_initialized=true;
-        // This remains an ACTIVE LOWCMD position hold; the operator must
-        // support the arm and have a physical E-stop.
-        std::cerr<<"[M2.4e2k] SDK unarmed HOLD anchored at initial measured joints;"
-                    " LOWCMD still drives motors; no keyboard TARGET required.\n";
         const auto now=Clock::now();
         planner.reset(latest,now); // Reject missing/error/nonfinite/invalid real feedback.
+        // Planner HOLD and TRACK share one fixed command reference.
+        // LOWCMD still drives motors even with no keyboard TARGET.
+        std::cerr<<"[Z1] SDK HOLD anchored at initial commanded joints; "
+                    "HOLD->TRACK position setpoint cannot jump.\n";
         q=latest.q; dq=latest.dq;
         goal_q=latest.q;
         last_step=Clock::now(); // SDK mode transitions may take seconds.
@@ -249,22 +242,7 @@ struct State {
 #ifdef M24E2D_ENABLE_HARDWARE_SDK
                 // NEVER use mock state to arm planner or initialize physical joint targets.
                 // The SDK is TX+RX. This path does not imply validated UDP RX provenance.
-                auto command=planner.tick(latest,now,dt);
-                if(!command.track){
-                    // The Planner's normal unarmed behavior out.q=f.q follows
-                    // every measurement, cancelling position-restoring PD.
-                    // Follow the fixed-pose setpoint principle in the vendor
-                    // lowcmd_development.cpp example without touching SDK code.
-                    // Re-anchor ONCE on TRACK->HOLD (operator disarm/watchdog),
-                    // never on every feedback frame.
-                    if(!sdk_hold_initialized || sdk_was_tracking){
-                        sdk_hold_q=latest.q;
-                        sdk_hold_initialized=true;
-                    }
-                    command.q=sdk_hold_q;
-                    command.dq.fill(0.);
-                }
-                sdk_was_tracking=command.track;
+                const auto command=planner.tick(latest,now,dt);
                 const auto sdk_start=Clock::now();
                 latest=sdk->exchange(command); // one caller/thread; no concurrent vendor RX thread
                 const auto sdk_end=Clock::now();
@@ -297,6 +275,19 @@ struct State {
             return sdk_mode ? "V1 HELLO_ACK SDK_MODE_UNQUALIFIED" :
                 "V1 HELLO_ACK MOCK_ONLY NO_SDK_NO_DDS_NO_MOTOR_IO";
         }
+        if(verb=="REF"){
+            // Additive read-only IPC: report the exact Planner output reference
+            // (not the drifting encoder measurement). No SDK I/O or motor effect.
+            std::uint64_t req=0;
+            if(!(in>>req)||req==0)return "V1 ERR 0 INVALID_REQUEST";
+            try{require_end(in);}catch(...){return "V1 ERR 0 EXTRA_FIELDS";}
+            if(sdk_mode && fault_latched)return "V1 ERR 0 SDK_FAULT_LATCHED";
+            std::ostringstream out;
+            out<<std::setprecision(17)<<"V1 REF "<<req<<' '<<mono_ns()
+               <<' '<<(planner.armed()?"TRACK":"HOLD");
+            for(const double v:planner.commandPosition())out<<' '<<v;
+            return out.str();
+        }
         if(verb=="TARGET"){
             std::uint64_t seq=0, stamp=0;
             int enable_int=-1;
@@ -310,6 +301,15 @@ struct State {
                 return "V1 ERR 0 NONMONOTONIC_SEQUENCE";
             }
             if(enable_int!=0 && enable_int!=1) return "V1 ERR 0 INVALID_ENABLE";
+            if(enable_int==1 && !planner.armed()){
+                // Fail closed if HOLD started just outside a strict target
+                // boundary, e.g. J3=+0.00064 with J3 upper limit 0.
+                // Never silently move/clamp an arm toward its hard stop on ARM.
+                const auto hold_ref=planner.commandPosition();
+                for(int i=0;i<6;++i)
+                    if(!std::isfinite(hold_ref[i])||hold_ref[i]<lo[i]||hold_ref[i]>hi[i])
+                        return "V1 ERR 0 HOLD_REFERENCE_OUT_OF_LIMIT_J"+std::to_string(i+1);
+            }
             for(int i=0;i<6;++i)if(!std::isfinite(next[i])||next[i]<lo[i]||next[i]>hi[i]){
                 enabled=false;fault_latched=true;planner.disarm();
                 fault_reason="TARGET_OUT_OF_LIMIT";
