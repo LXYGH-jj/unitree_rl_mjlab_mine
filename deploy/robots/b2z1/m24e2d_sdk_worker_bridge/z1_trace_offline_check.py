@@ -117,7 +117,16 @@ def mock_check(worker):
             if len(raw) != 20 or raw[2] != "MOCK":
                 raise RuntimeError(f"Unexpected mock STATE: {raw}")
             start = [float(x) for x in raw[8:14]]
-            target = list(start)
+            # REF must expose the exact hold COMMAND; GET is motor/mock
+            # measurement, which may differ in real SDK mode.
+            ref_packet = request(conn, "V1 REF 2")
+            if (len(ref_packet) != 11 or ref_packet[:3] != ["V1", "REF", "2"]
+                    or ref_packet[4] != "HOLD"):
+                raise RuntimeError(f"Malformed initial mock REF: {ref_packet}")
+            ref_pose = [float(v) for v in ref_packet[5:11]]
+            if any(abs(x-y)>1e-8 for x,y in zip(ref_pose,start)):
+                raise RuntimeError("Mock HOLD reference mismatches starting command")
+            target = list(ref_pose)
             target[4] += 0.005   # J5 mock-only setpoint
             if not all(math.isfinite(v) for v in target):
                 raise RuntimeError("Bad mock starting pose")
@@ -128,6 +137,10 @@ def mock_check(worker):
                 ack = request(conn, msg)
                 if ack[:3] != ["V1", "ACK", str(seq)]:
                     raise RuntimeError(f"Unexpected target ack: {ack}")
+                if seq in (1, 100, 101, 200):
+                    ref_now = request(conn, f"V1 REF {seq + 2}")
+                    if len(ref_now) != 11 or ref_now[4] not in ("HOLD", "TRACK"):
+                        raise RuntimeError(f"Malformed tracking REF: {ref_now}")
                 time.sleep(0.02)
         until = time.monotonic() + 3
         previous_size = -1
