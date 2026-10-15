@@ -114,6 +114,16 @@ struct State {
         // These booleans describe ONLY a synthetic mock. Never use as hardware proof.
         return f;
     }
+    void stop_sdk() noexcept {
+#ifdef M24E2D_ENABLE_HARDWARE_SDK
+        if(sdk_mode && sdk) {
+            const bool confirmed=sdk->stop();
+            std::cerr << "[M2.4e2j] SDK PASSIVE "
+                      << (confirmed?"confirmed":"NOT CONFIRMED; operator must use physical E-stop/support")
+                      << '\n';
+        }
+#endif
+    }
     void step() {
         const auto now=Clock::now();
         double dt=std::chrono::duration<double>(now-last_step).count();
@@ -228,6 +238,9 @@ void session(int fd,bool sdk_mode,bool has_gripper){
     char buf[kPacketMax];
     while(!stopping){
         state.step();
+        // Do not continue the communication loop after a latched SDK fault.
+        // A software latch is not a physical stop: attempt transition once.
+        if(sdk_mode && state.fault_latched) break;
         pollfd p{fd,POLLIN,0};
         int ready=::poll(&p,1,sdk_mode?2:5);
         if(ready<0){if(errno==EINTR)continue;break;}
@@ -242,8 +255,9 @@ void session(int fd,bool sdk_mode,bool has_gripper){
         catch (...) { reply="V1 ERR 0 MALFORMED_PACKET"; }
         try{send_packet(fd,reply);}catch(...){break;}
     }
-    // End of session: SDK destruction and network cessation are NOT proven safe stops.
-    // Physical mode requires operator-supervised bench qualification of this behavior.
+    // Covers Ctrl+C, peer close, IPC send failure, TARGET watchdog errors and
+    // normal end-of-session. Actual hardware safety still needs operator oversight.
+    state.stop_sdk();
 }
 } // namespace
 int main(int argc,char** argv){
