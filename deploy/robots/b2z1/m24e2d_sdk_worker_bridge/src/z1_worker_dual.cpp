@@ -62,15 +62,18 @@ void require_end(std::istringstream& in) {
     std::string extra;
     if(in >> extra) throw std::invalid_argument("extra_fields");
 }
-m24e2b::Limits development_limits(){
+m24e2b::Limits development_limits(bool sdk_mode){
     m24e2b::Limits l;
     // The previous Planner J3 upper limit was -0.01 rad, while the IPC
     // accepts 0.0 rad. Measured startup J3 can be at 0.0; the mismatch
     // caused an immediate fault even on an unarmed keyboard connection.
     l.lo=kWorkerJointLo;
     l.hi=kWorkerJointHi;
-    l.velocity_max.fill(.4); l.acceleration_max.fill(.8);
-    l.temperature_max.fill(75);
+    // Keep synthetic/non-hardware semantics unchanged. Real SDK bench
+    // gets slow, acceleration-limited trajectories as an extra defense.
+    l.velocity_max.fill(sdk_mode ? .10 : .4);
+    l.acceleration_max.fill(sdk_mode ? .20 : .8);
+    l.temperature_max.fill(sdk_mode ? 60 : 75);
     l.target_ttl=kGoalTtl;
     return l; // OFFLINE DEVELOPMENT FIXTURE, NOT APPROVED Z1 MOTOR LIMITS
 }
@@ -86,13 +89,14 @@ struct State {
     Clock::time_point last_step{Clock::now()};
     const Vec6 lo{kWorkerJointLo};
     const Vec6 hi{kWorkerJointHi};
-    m24e2b::Planner planner{development_limits()};
+    m24e2b::Planner planner;
     bool sdk_mode{false};
 #ifdef M24E2D_ENABLE_HARDWARE_SDK
     std::unique_ptr<m24e2b::SdkBridge> sdk;
     m24e2b::Feedback latest{};
 #endif
-    explicit State(bool use_sdk,bool has_gripper,bool alore_gain):sdk_mode(use_sdk){
+    explicit State(bool use_sdk,bool has_gripper,bool alore_gain):
+        planner(development_limits(use_sdk)),sdk_mode(use_sdk){
 #ifndef M24E2D_ENABLE_HARDWARE_SDK
         (void)has_gripper; // Mock build keeps SDK hardware options inert.
         (void)alore_gain;
