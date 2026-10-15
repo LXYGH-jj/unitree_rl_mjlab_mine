@@ -3,9 +3,10 @@
 #include "z1_lowcmd_plan.h"
 #include <memory>
 namespace m24e2b {
+enum class GainProfile { VendorDefault, AloreV2 };
 class SdkBridge final {
 public:
-    explicit SdkBridge(bool has_gripper);
+    explicit SdkBridge(bool has_gripper, GainProfile profile=GainProfile::VendorDefault);
     ~SdkBridge();
     SdkBridge(const SdkBridge&)=delete;
     SdkBridge& operator=(const SdkBridge&)=delete;
@@ -16,7 +17,7 @@ public:
     // Must be called by single thread at SDK cadence, not concurrently with vendor thread.
     Feedback exchange(const Command& command);
     bool started() const noexcept;
-    // Best-effort LOWCMD -> JOINTCTRL -> PASSIVE handoff, no return-to-home motion.
+    // Best-effort LOWCMD -> PASSIVE handoff; does not command home motion.
     // Requires a mechanically supported arm. False means PASSIVE was NOT confirmed.
     // Never substitutes for a physical E-stop, especially if SDK UDP is lost.
     bool stop() noexcept;
