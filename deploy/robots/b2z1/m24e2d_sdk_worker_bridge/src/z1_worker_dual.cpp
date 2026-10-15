@@ -12,6 +12,10 @@
 #include <poll.h>
 #include <signal.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <cstdio>
+#include <vector>
+#include <utility>
 
 #include <algorithm>
 #include <array>
@@ -77,6 +81,61 @@ m24e2b::Limits development_limits(bool sdk_mode){
     l.target_ttl=kGoalTtl;
     return l; // OFFLINE DEVELOPMENT FIXTURE, NOT APPROVED Z1 MOTOR LIMITS
 }
+
+struct TraceRow {
+    std::uint64_t time_ns{0}, target_seq{0};
+    double dt_ms{0}, io_ms{0}, target_age_ms{-1};
+    bool track{false};
+    Vec6 goal{}, q_cmd{}, dq_cmd{}, q_meas{}, dq_meas{}, sent_ff{}, tau_meas{};
+};
+// Optional fixed-size rolling buffer. No disk I/O in motor-control loop.
+// Values are SDK getter samples, NOT verified individual fresh UDP packets.
+class TraceRing {
+public:
+    static constexpr std::size_t kCapacity=16384;
+    TraceRing():data_(kCapacity){}
+    void add(const TraceRow& r) noexcept {
+        data_[next_]=r;
+        next_=(next_+1)%kCapacity;
+        if(count_<kCapacity) ++count_;
+    }
+    void save(const std::string& path) const noexcept {
+        if(path.empty()) return;
+        const int fd=::open(path.c_str(),O_WRONLY|O_CREAT|O_EXCL|O_CLOEXEC,0600);
+        if(fd<0){
+            std::cerr<<"[Z1 TRACE] Cannot create new CSV "<<path
+                     <<" errno="<<errno<<'\n';
+            return;
+        }
+        std::FILE* fp=::fdopen(fd,"w");
+        if(!fp){::close(fd); std::cerr<<"[Z1 TRACE] fdopen failed\n";return;}
+        std::fputs("mono_ns,cycle_dt_ms,sdk_exchange_ms,target_age_ms,track,target_seq",fp);
+        for(int i=1;i<=6;i++)
+            std::fprintf(fp,",goal_J%d,qcmd_J%d,dqcmd_J%d,qmeas_J%d,dqmeas_J%d,ff_sent_J%d,tau_meas_J%d",
+                         i,i,i,i,i,i,i);
+        std::fputc('\n',fp);
+        const auto first=(next_+kCapacity-count_)%kCapacity;
+        for(std::size_t n=0;n<count_;++n){
+            const auto& r=data_[(first+n)%kCapacity];
+            std::fprintf(fp,"%llu,%.9g,%.9g,%.9g,%d,%llu",
+                         static_cast<unsigned long long>(r.time_ns),
+                         r.dt_ms,r.io_ms,r.target_age_ms,r.track?1:0,
+                         static_cast<unsigned long long>(r.target_seq));
+            for(int i=0;i<6;++i)
+                std::fprintf(fp,",%.12g,%.12g,%.12g,%.12g,%.12g,%.12g,%.12g",
+                             r.goal[i],r.q_cmd[i],r.dq_cmd[i],r.q_meas[i],
+                             r.dq_meas[i],r.sent_ff[i],r.tau_meas[i]);
+            std::fputc('\n',fp);
+        }
+        const bool io_error=std::ferror(fp)!=0;
+        const int close_rc=std::fclose(fp);
+        std::cerr<<"[Z1 TRACE] "<<(io_error||close_rc?"CSV write error ":"CSV saved ")
+                 <<path<<" samples="<<count_<<" (last "<<kCapacity<<")\n";
+    }
+private:
+    std::vector<TraceRow> data_;
+    std::size_t next_{0},count_{0};
+};
 struct State {
     Vec6 q{0., 1.48, -.63, -.84, 0., 1.57};
     Vec6 dq{};
@@ -91,6 +150,9 @@ struct State {
     const Vec6 hi{kWorkerJointHi};
     m24e2b::Planner planner;
     bool sdk_mode{false};
+    Vec6 goal_q{}; // Last accepted keyboard target; diagnostics only.
+    std::string trace_csv_path{};
+    std::unique_ptr<TraceRing> trace{};
 #ifdef M24E2D_ENABLE_HARDWARE_SDK
     std::unique_ptr<m24e2b::SdkBridge> sdk;
     m24e2b::Feedback latest{};
@@ -100,13 +162,17 @@ struct State {
     bool sdk_hold_initialized{false};
     bool sdk_was_tracking{false};
 #endif
-    explicit State(bool use_sdk,bool has_gripper,bool alore_gain):
-        planner(development_limits(use_sdk)),sdk_mode(use_sdk){
+    explicit State(bool use_sdk,bool has_gripper,bool alore_gain,std::string csv_path):
+        planner(development_limits(use_sdk)),sdk_mode(use_sdk),
+        trace_csv_path(std::move(csv_path)){
+        if(!trace_csv_path.empty()) trace=std::make_unique<TraceRing>();
+
 #ifndef M24E2D_ENABLE_HARDWARE_SDK
         (void)has_gripper; // Mock build keeps SDK hardware options inert.
         (void)alore_gain;
 #endif
         if(!sdk_mode){
+            goal_q=q;
             auto f=mock_feedback(Clock::now());
             planner.reset(f, f.read_at);
             return;
@@ -126,6 +192,7 @@ struct State {
         const auto now=Clock::now();
         planner.reset(latest,now); // Reject missing/error/nonfinite/invalid real feedback.
         q=latest.q; dq=latest.dq;
+        goal_q=latest.q;
         last_step=Clock::now(); // SDK mode transitions may take seconds.
 #else
         throw std::runtime_error("SDK backend not compiled");
@@ -139,6 +206,26 @@ struct State {
         f.temperature.fill(30);
         // These booleans describe ONLY a synthetic mock. Never use as hardware proof.
         return f;
+    }
+    void record_trace(const m24e2b::Command& cmd,const m24e2b::Feedback& fb,
+                      Clock::time_point now,double dt,double sdk_io_ms) noexcept {
+        if(!trace) return;
+        TraceRow r{};
+        r.time_ns=mono_ns(now);
+        r.target_seq=last_seq;
+        r.dt_ms=dt*1000.;
+        r.io_ms=sdk_io_ms;
+        r.target_age_ms=last_target==Clock::time_point{} ? -1. :
+            std::chrono::duration<double,std::milli>(now-last_target).count();
+        r.track=cmd.track;
+        r.goal=goal_q;
+        r.q_cmd=cmd.q;
+        r.dq_cmd=cmd.dq;
+        r.q_meas=fb.q;
+        r.dq_meas=fb.dq;
+        r.sent_ff=fb.sent_feedforward_tau;
+        r.tau_meas=fb.tau;
+        trace->add(r);
     }
     void stop_sdk() noexcept {
 #ifdef M24E2D_ENABLE_HARDWARE_SDK
@@ -176,7 +263,11 @@ struct State {
                     command.dq.fill(0.);
                 }
                 sdk_was_tracking=command.track;
+                const auto sdk_start=Clock::now();
                 latest=sdk->exchange(command); // one caller/thread; no concurrent vendor RX thread
+                const auto sdk_end=Clock::now();
+                record_trace(command,latest,now,dt,
+                             std::chrono::duration<double,std::milli>(sdk_end-sdk_start).count());
                 q=latest.q;dq=latest.dq;enabled=command.track;
 #else
                 throw std::runtime_error("SDK backend not compiled");
@@ -185,6 +276,7 @@ struct State {
                 dt=std::clamp(dt,.0001,.019); // Existing mock semantics unchanged.
                 const auto command=planner.tick(mock_feedback(now),now,dt);
                 q=command.q; dq=command.dq; enabled=command.track;
+                record_trace(command,mock_feedback(Clock::now()),now,dt,0.);
             }
         } catch(const std::exception& e) {
             fault_latched=true;enabled=false;dq.fill(0.);planner.disarm();
@@ -239,6 +331,7 @@ struct State {
                 return "V1 ERR 0 PLANNER_REJECTED";
             }
             last_seq=seq;
+            goal_q=next; // accepted target, for trace only.
             last_stamp=stamp;
             last_target=now;
             enabled=bool(enable_int);
@@ -286,12 +379,12 @@ struct State {
         return "V1 ERR 0 UNKNOWN_VERB";
     }
 };
-void session(int fd,bool sdk_mode,bool has_gripper,bool alore_gain){
+void session(int fd,bool sdk_mode,bool has_gripper,bool alore_gain,const std::string& trace_csv){
     struct ucred cred{}; socklen_t size=sizeof(cred);
     if(::getsockopt(fd,SOL_SOCKET,SO_PEERCRED,&cred,&size)!=0 || cred.uid!=::geteuid()){
         send_packet(fd,"V1 ERR 0 FOREIGN_UID");return;
     }
-    State state{sdk_mode,has_gripper,alore_gain};
+    State state{sdk_mode,has_gripper,alore_gain,trace_csv};
     char buf[kPacketMax];
     while(!stopping){
         state.step();
@@ -315,13 +408,15 @@ void session(int fd,bool sdk_mode,bool has_gripper,bool alore_gain){
     // Covers Ctrl+C, peer close, IPC send failure, TARGET watchdog errors and
     // normal end-of-session. Actual hardware safety still needs operator oversight.
     state.stop_sdk();
+    if(state.trace) state.trace->save(state.trace_csv_path); // after PASSIVE only
 }
 } // namespace
 int main(int argc,char** argv){
     if(argc==2 && std::string(argv[1])=="--help"){
         std::cout<<"M2.4e2d: --socket /absolute/path [--backend mock]\n"
                  <<"SDK requires build opt-in, --backend sdk, --has-gripper yes|no, bench-ack.\n"
-                 <<"Gain profiles: --gain-profile vendor (default) or alore-v2 (EXPERIMENTAL).\n";
+                 <<"Gain profiles: --gain-profile vendor (default) or alore-v2 (EXPERIMENTAL).\n"
+                 <<"Optional: --trace-csv /absolute/new.csv (dump AFTER control session).\n";
         return 0;
     }
     bool sdk_mode=false;
@@ -329,6 +424,7 @@ int main(int argc,char** argv){
     bool has_gripper=false,gripper_specified=false;
     bool alore_gain=false,profile_specified=false;
     std::string path;
+    std::string trace_csv;
     for(int i=1;i<argc;++i){
         const std::string arg=argv[i];
         if(arg=="--socket" && i+1<argc){path=argv[++i];}
@@ -350,7 +446,8 @@ int main(int argc,char** argv){
             else if(p=="alore-v2")alore_gain=true;
             else {std::cerr<<"--gain-profile must be vendor or alore-v2\n";return 2;}
             profile_specified=true;
-        }else if(arg=="--bench-ack" && i+1<argc){ack=std::string(argv[++i])==kPhysicalAck;}
+        }else if(arg=="--trace-csv" && i+1<argc){trace_csv=argv[++i];}
+        else if(arg=="--bench-ack" && i+1<argc){ack=std::string(argv[++i])==kPhysicalAck;}
         else {std::cerr<<"Unknown/missing argument: "<<arg<<'\n';return 2;}
     }
     if(sdk_mode){
@@ -370,6 +467,9 @@ int main(int argc,char** argv){
     if(path.empty()) {std::cerr<<"usage: --socket /absolute/path [--backend mock]\n";return 2;}
     if(path.empty()||path[0]!='/'||path.size()>=sizeof(sockaddr_un::sun_path)){
         std::cerr<<"Socket path must be short and absolute\n";return 2;
+    }
+    if(!trace_csv.empty() && (trace_csv[0]!='/' || trace_csv==path)){
+        std::cerr<<"trace-csv must be an absolute path different from socket\n";return 2;
     }
     ::signal(SIGINT,on_signal);::signal(SIGTERM,on_signal);
     ::umask(0077);
@@ -393,7 +493,7 @@ int main(int argc,char** argv){
         if(!(p.revents&POLLIN))continue;
         ScopedFd client(::accept4(listener.fd,nullptr,nullptr,SOCK_CLOEXEC));
         if(client.fd<0){if(errno==EINTR)continue;break;}
-        try {session(client.fd,sdk_mode,has_gripper,alore_gain);}
+        try {session(client.fd,sdk_mode,has_gripper,alore_gain,trace_csv);}
         catch(const std::exception& e){
             std::cerr<<"Worker session failed: "<<e.what()<<'\n';
             if(sdk_mode){stopping=1;break;} // NEVER restart live SDK after startup failure
