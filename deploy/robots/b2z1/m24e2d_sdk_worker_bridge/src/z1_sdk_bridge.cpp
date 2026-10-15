@@ -58,9 +58,24 @@ void checkBenchCommand(const UNITREE_ARM::unitreeArm& arm,
         // so this guard is never a hard actuator torque/current limit.
         const double predicted = 25.6*kp*(q[i]-measured_q) +
                                  0.0128*kd*(dq[i]-measured_dq) + tau_ff[i];
-        if(!std::isfinite(predicted) || std::abs(predicted)>kBenchEstimatedTotalNm)
-            throw std::runtime_error("Z1 bench guard: estimated total tau >10 Nm J"+
-                                     std::to_string(i+1)+" predicted="+std::to_string(predicted));
+        if(!std::isfinite(predicted) || std::abs(predicted)>kBenchEstimatedTotalNm) {
+            const double tau_pos=25.6*kp*(q[i]-measured_q);
+            const double tau_vel=0.0128*kd*(dq[i]-measured_dq);
+            throw std::runtime_error(
+                "Z1 bench guard: estimated total torque limit at J"+std::to_string(i+1)+
+                " predicted="+std::to_string(predicted)+
+                " limit="+std::to_string(kBenchEstimatedTotalNm)+
+                " position_pd="+std::to_string(tau_pos)+
+                " velocity_pd="+std::to_string(tau_vel)+
+                " gravity_ff="+std::to_string(tau_ff[i])+
+                " feedback_tau="+std::to_string(measured_tau)+
+                " q_cmd="+std::to_string(q[i])+
+                " q_meas="+std::to_string(measured_q)+
+                " dq_cmd="+std::to_string(dq[i])+
+                " dq_meas="+std::to_string(measured_dq)+
+                " kp_sdk="+std::to_string(kp)+
+                " kd_sdk="+std::to_string(kd));
+        }
     }
 }
 } // namespace
@@ -143,24 +158,6 @@ void SdkBridge::start(){
     // Do not mix in ALORE Python binding's differently-scaled gains.
     if(!arm.lowcmd) throw std::runtime_error("Z1 lowcmd unavailable");
     arm.lowcmd->setControlGain();
-    if(impl_->gain_profile_==GainProfile::AloreV2) {
-        // ALORE Deployment/Z1_deploy/z1_control.py:
-        // desired effective Kp=[264,328,264,264,264,264],
-        // effective Kd=[1.5,3.0,1.5,1.5,1.5,1.5].
-        // Z1 controller V2 uses Kp*25.6 and Kd*0.0128 on the wire.
-        // Preserve any existing gripper gain by only replacing joints 1..6.
-        if(arm.lowcmd->kp.size()<6 || arm.lowcmd->kd.size()<6)
-            throw std::runtime_error("Z1 LOWCMD gains unavailable for ALORE profile");
-        auto kp=arm.lowcmd->kp;
-        auto kd=arm.lowcmd->kd;
-        const double kp_effective[6]={264.,328.,264.,264.,264.,264.};
-        const double kd_effective[6]={1.5,3.0,1.5,1.5,1.5,1.5};
-        for(int i=0;i<6;++i) {
-            kp[i]=kp_effective[i]/25.6;
-            kd[i]=kd_effective[i]/0.0128;
-        }
-        arm.lowcmd->setControlGain(kp,kd);
-    }
     const auto validate_gains=[&arm]() {
         if(arm.lowcmd->kp.size()<6 || arm.lowcmd->kd.size()<6)
             throw std::runtime_error("Z1 LOWCMD PD gains unavailable");
@@ -178,13 +175,43 @@ void SdkBridge::start(){
     const auto guarded=m24e2h::combineGravityTorque(measured_g,user_tau);
     ::Vec6 compensated=::Vec6::Zero();
     for(int i=0;i<6;++i)compensated[i]=guarded[i];
+    std::cerr << "[M2.4e2k] SDK model startup feedforward Nm:";
+    for(int i=0;i<6;++i)std::cerr << " J" << i+1 << "=" << compensated[i];
+    std::cerr << '\n';
     checkBenchCommand(arm,initial,::Vec6::Zero(),compensated);
     arm.setArmCmd(initial,::Vec6::Zero(),compensated);
     if(!arm.setFsm(UNITREE_ARM::ArmFSMState::LOWCMD))
         throw std::runtime_error("LOWCMD transition failed");
     arm.sendRecvThread->shutdown();  // exclusive sendRecv owner after this point
     impl_->vendor_thread_running_=false;
-    // Re-check AFTER the mode transition: LOWCMD state must not have cleared gains.
+    // setFsm(LOWCMD) restores SDK vendor gains. Configure ALORE ONLY after
+    // this transition, with the SDK background sender stopped.
+    if(impl_->gain_profile_==GainProfile::AloreV2) {
+        // ALORE Deployment/Z1_deploy/z1_control.py:
+        // desired effective Kp=[264,328,264,264,264,264],
+        // effective Kd=[1.5,3.0,1.5,1.5,1.5,1.5].
+        // Z1 controller V2 uses Kp*25.6 and Kd*0.0128 on the wire.
+        // Preserve any existing gripper gain by only replacing joints 1..6.
+        if(arm.lowcmd->kp.size()<6 || arm.lowcmd->kd.size()<6)
+            throw std::runtime_error("Z1 LOWCMD gains unavailable for ALORE profile");
+        auto kp=arm.lowcmd->kp;
+        auto kd=arm.lowcmd->kd;
+        const double kp_effective[6]={264.,328.,264.,264.,264.,264.};
+        const double kd_effective[6]={1.5,3.0,1.5,1.5,1.5,1.5};
+        for(int i=0;i<6;++i) {
+            kp[i]=kp_effective[i]/25.6;
+            kd[i]=kd_effective[i]/0.0128;
+        }
+        arm.lowcmd->setControlGain(kp,kd);
+        // After setFsm(), the SDK may reset the gains to vendor defaults.
+        // Verify the post-transition object values BEFORE any Worker exchange().
+        for(int i=0;i<6;++i) {
+            if(std::abs(arm.lowcmd->kp[i]-kp[i])>1e-8 ||
+               std::abs(arm.lowcmd->kd[i]-kd[i])>1e-8)
+                throw std::runtime_error("ALORE V2 LOWCMD gain assignment failed at J"+
+                                         std::to_string(i+1));
+        }
+    }
     validate_gains();
     std::cerr << "[M2.4e2k] SDK LOWCMD transition returned success; gain_profile="
               << (impl_->gain_profile_==GainProfile::AloreV2?"alore-v2":"vendor")
