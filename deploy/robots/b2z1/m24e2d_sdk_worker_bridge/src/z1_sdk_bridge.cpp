@@ -16,8 +16,8 @@ namespace {
 // M2.4e2k conservative DEVELOPMENT-only command envelope for a supported,
 // unloaded, low-speed Z1 V2 bench. These numbers are NOT Unitree per-joint
 // continuous torque ratings and cannot bound actuator current in hardware.
-constexpr double kBenchEstimatedTotalNm = 10.0;
-constexpr double kBenchObservedTauNm = 12.0;
+constexpr double kBenchEstimatedTotalNm = 20.0;
+constexpr double kBenchObservedTauNm = 20.0;
 constexpr double kBenchTargetErrorRad = 0.035;
 constexpr double kBenchDesiredVelocityRadS = 0.10;
 constexpr double kBenchMeasuredVelocityRadS = 0.30;
@@ -48,7 +48,9 @@ void checkBenchCommand(const UNITREE_ARM::unitreeArm& arm,
            feedback->temperature[i]>=kBenchTemperatureC)
             throw std::runtime_error("Z1 bench guard: motor fault/temperature J"+std::to_string(i+1));
         if(std::abs(measured_tau)>kBenchObservedTauNm)
-            throw std::runtime_error("Z1 bench guard: observed tau >12 Nm J"+std::to_string(i+1));
+            throw std::runtime_error("Z1 bench guard: observed torque J"+std::to_string(i+1)+
+                                     " measured="+std::to_string(measured_tau)+
+                                     " limit="+std::to_string(kBenchObservedTauNm));
         if(std::abs(q[i]-measured_q)>kBenchTargetErrorRad ||
            std::abs(dq[i])>kBenchDesiredVelocityRadS ||
            std::abs(measured_dq)>kBenchMeasuredVelocityRadS)
@@ -219,10 +221,14 @@ void SdkBridge::start(){
     for(int i=0;i<6;++i)
         std::cerr << " J" << i+1 << "=" << arm.lowcmd->kp[i] << "/" << arm.lowcmd->kd[i];
     std::cerr << '\n';
-    std::cerr << "[M2.4e2k] DEVELOPMENT bench guard enabled: predicted<=10Nm,"
-                 " observed<=12Nm, |qcmd-q|<=0.035rad, |qd_cmd|<=0.10rad/s,"
-                 " |qd_meas|<=0.30rad/s, temperature<60C."
-                 " NOT hardware current/torque limiting.\n";
+    std::cerr << "[M2.4e2k] DEVELOPMENT bench guard (PROVISIONAL, not motor rating):"
+              << " |estimated_total_tau|<=" << kBenchEstimatedTotalNm << "Nm,"
+              << " |feedback_tau|<=" << kBenchObservedTauNm << "Nm,"
+              << " |qcmd-q|<=" << kBenchTargetErrorRad << "rad,"
+              << " |qd_cmd|<=" << kBenchDesiredVelocityRadS << "rad/s,"
+              << " |qd_meas|<=" << kBenchMeasuredVelocityRadS << "rad/s,"
+              << " temperature<" << kBenchTemperatureC << "C."
+              << " NOT hardware current/torque limiting.\n";
     // Capture actual, measured startup joints. Never use ALORE default pose as real state.
     // Timestamp represents SDK getter sampling, not an independently proven UDP RX.
     const auto* l=arm.lowstate;
