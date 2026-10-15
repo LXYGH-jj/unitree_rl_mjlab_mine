@@ -7,10 +7,63 @@
 #include <unitree_arm_sdk/message/arm_common.h>
 #include <stdexcept>
 #include <cmath>
+#include <array>
 #include <iostream>
 #include <string>
 #include <thread>
 namespace m24e2b {
+namespace {
+// M2.4e2k conservative DEVELOPMENT-only command envelope for a supported,
+// unloaded, low-speed Z1 V2 bench. These numbers are NOT Unitree per-joint
+// continuous torque ratings and cannot bound actuator current in hardware.
+constexpr double kBenchEstimatedTotalNm = 10.0;
+constexpr double kBenchObservedTauNm = 12.0;
+constexpr double kBenchTargetErrorRad = 0.035;
+constexpr double kBenchDesiredVelocityRadS = 0.10;
+constexpr double kBenchMeasuredVelocityRadS = 0.30;
+constexpr int kBenchTemperatureC = 60;
+
+void checkBenchCommand(const UNITREE_ARM::unitreeArm& arm,
+                       const ::Vec6& q, const ::Vec6& dq, const ::Vec6& tau_ff) {
+    const auto* comp=arm._ctrlComp;
+    const auto* feedback=arm.lowstate;
+    const auto* cmd=arm.lowcmd;
+    if(!comp || !comp->udp || comp->udp->isDisConnect || !feedback || !cmd ||
+       feedback->q.size()<6 || feedback->dq.size()<6 || feedback->tau.size()<6 ||
+       feedback->temperature.size()<6 || feedback->errorstate.size()<6 ||
+       feedback->isMotorConnected.size()<6 || cmd->kp.size()<6 || cmd->kd.size()<6)
+        throw std::runtime_error("Z1 bench torque guard: feedback/gains unavailable");
+    for(int i=0;i<6;++i) {
+        const double measured_q=feedback->q[i];
+        const double measured_dq=feedback->dq[i];
+        const double measured_tau=feedback->tau[i];
+        const double kp=cmd->kp[i],kd=cmd->kd[i];
+        if(!std::isfinite(q[i]) || !std::isfinite(dq[i]) ||
+           !std::isfinite(tau_ff[i]) || !std::isfinite(measured_q) ||
+           !std::isfinite(measured_dq) || !std::isfinite(measured_tau) ||
+           !std::isfinite(kp) || !std::isfinite(kd) || kp<=0 || kd<=0)
+            throw std::runtime_error("Z1 bench guard: nonfinite joint data/gains J"+std::to_string(i+1));
+        if(feedback->isMotorConnected[i]!=0 ||
+           (feedback->errorstate[i] & static_cast<uint8_t>(~0x40u)) != 0 ||
+           feedback->temperature[i]>=kBenchTemperatureC)
+            throw std::runtime_error("Z1 bench guard: motor fault/temperature J"+std::to_string(i+1));
+        if(std::abs(measured_tau)>kBenchObservedTauNm)
+            throw std::runtime_error("Z1 bench guard: observed tau >12 Nm J"+std::to_string(i+1));
+        if(std::abs(q[i]-measured_q)>kBenchTargetErrorRad ||
+           std::abs(dq[i])>kBenchDesiredVelocityRadS ||
+           std::abs(measured_dq)>kBenchMeasuredVelocityRadS)
+            throw std::runtime_error("Z1 bench guard: position/velocity envelope J"+std::to_string(i+1));
+        // Z1 V2 protocol scales kp, kd before applying PD.
+        // Prediction uses the most recent SDK getter sample, NOT proven fresh RX,
+        // so this guard is never a hard actuator torque/current limit.
+        const double predicted = 25.6*kp*(q[i]-measured_q) +
+                                 0.0128*kd*(dq[i]-measured_dq) + tau_ff[i];
+        if(!std::isfinite(predicted) || std::abs(predicted)>kBenchEstimatedTotalNm)
+            throw std::runtime_error("Z1 bench guard: estimated total tau >10 Nm J"+
+                                     std::to_string(i+1)+" predicted="+std::to_string(predicted));
+    }
+}
+} // namespace
 class SdkBridge::Impl {
 public:
     explicit Impl(bool with_gripper, GainProfile profile):with_gripper_(with_gripper),gain_profile_(profile){}
@@ -125,6 +178,7 @@ void SdkBridge::start(){
     const auto guarded=m24e2h::combineGravityTorque(measured_g,user_tau);
     ::Vec6 compensated=::Vec6::Zero();
     for(int i=0;i<6;++i)compensated[i]=guarded[i];
+    checkBenchCommand(arm,initial,::Vec6::Zero(),compensated);
     arm.setArmCmd(initial,::Vec6::Zero(),compensated);
     if(!arm.setFsm(UNITREE_ARM::ArmFSMState::LOWCMD))
         throw std::runtime_error("LOWCMD transition failed");
@@ -138,6 +192,10 @@ void SdkBridge::start(){
     for(int i=0;i<6;++i)
         std::cerr << " J" << i+1 << "=" << arm.lowcmd->kp[i] << "/" << arm.lowcmd->kd[i];
     std::cerr << '\n';
+    std::cerr << "[M2.4e2k] DEVELOPMENT bench guard enabled: predicted<=10Nm,"
+                 " observed<=12Nm, |qcmd-q|<=0.035rad, |qd_cmd|<=0.10rad/s,"
+                 " |qd_meas|<=0.30rad/s, temperature<60C."
+                 " NOT hardware current/torque limiting.\n";
     // Capture actual, measured startup joints. Never use ALORE default pose as real state.
     // Timestamp represents SDK getter sampling, not an independently proven UDP RX.
     const auto* l=arm.lowstate;
@@ -186,8 +244,12 @@ Feedback SdkBridge::exchange(const Command& c){
     for(int i=0;i<6;i++){gravity[i]=model_tau[i];extra[i]=c.tau[i];}
     const auto guarded=m24e2h::combineGravityTorque(gravity,extra);
     for(int i=0;i<6;i++)tau[i]=guarded[i];
+    // Before any new low-level command, veto excessive predicted PD+feedforward.
+    checkBenchCommand(*impl_->arm_,q,qd,tau);
     impl_->arm_->setArmCmd(q,qd,tau);
     impl_->arm_->sendRecv(); // TX+RX; NEVER passive observation
+    // Post-send observation check, still not an independent hardware watchdog.
+    checkBenchCommand(*impl_->arm_,q,qd,tau);
     const auto* l=impl_->arm_->lowstate;
     auto* comp=impl_->arm_->_ctrlComp;
     if(!l||!comp||!comp->udp||l->q.size()<6||l->dq.size()<6||l->tau.size()<6||
