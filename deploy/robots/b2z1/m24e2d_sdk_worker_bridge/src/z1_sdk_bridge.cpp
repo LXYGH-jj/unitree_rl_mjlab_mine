@@ -343,6 +343,7 @@ Feedback SdkBridge::exchange(const Command& c){
     f.read_at=Clock::now(); // sampled AFTER sendRecv(); not proof of fresh UDP reception!
     for(int i=0;i<6;i++){
         f.q[i]=l->q[i];f.dq[i]=l->dq[i];f.tau[i]=l->tau[i];
+        f.sent_feedforward_tau[i]=tau[i]; // SDK setArmCmd() torque, not observed tau.
         f.temperature[i]=l->temperature[i]; f.motor_error[i]=static_cast<int>(l->errorstate[i] & static_cast<uint8_t>(~0x40u)); // SDK bit 0x40: Ignore
         f.motor_connection[i]=l->isMotorConnected[i];
     }
