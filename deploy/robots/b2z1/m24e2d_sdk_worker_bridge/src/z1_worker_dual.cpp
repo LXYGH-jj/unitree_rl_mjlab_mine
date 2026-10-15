@@ -330,6 +330,12 @@ int main(int argc,char** argv){
             std::cerr<<"Worker session failed: "<<e.what()<<'\n';
             if(sdk_mode){stopping=1;break;} // NEVER restart live SDK after startup failure
         }
+        if(sdk_mode){
+            // One attended hardware session per Worker process.
+            // Prevent another IPC client from silently reinitializing LOWCMD.
+            stopping=1;
+            break;
+        }
     }
     // Only unlink our socket if it still points to the socket inode we created.
     struct stat st{};
