@@ -92,9 +92,10 @@ struct State {
     std::unique_ptr<m24e2b::SdkBridge> sdk;
     m24e2b::Feedback latest{};
 #endif
-    explicit State(bool use_sdk,bool has_gripper):sdk_mode(use_sdk){
+    explicit State(bool use_sdk,bool has_gripper,bool alore_gain):sdk_mode(use_sdk){
 #ifndef M24E2D_ENABLE_HARDWARE_SDK
         (void)has_gripper; // Mock build keeps SDK hardware options inert.
+        (void)alore_gain;
 #endif
         if(!sdk_mode){
             auto f=mock_feedback(Clock::now());
@@ -102,7 +103,9 @@ struct State {
             return;
         }
 #ifdef M24E2D_ENABLE_HARDWARE_SDK
-        sdk=std::make_unique<m24e2b::SdkBridge>(has_gripper);
+        sdk=std::make_unique<m24e2b::SdkBridge>(
+            has_gripper, alore_gain ? m24e2b::GainProfile::AloreV2
+                                    : m24e2b::GainProfile::VendorDefault);
         sdk->start(); // PHYSICAL I/O AND MODE SWITCH: runtime operator gate checked first.
         latest=sdk->initialFeedback();
         const auto now=Clock::now();
@@ -237,12 +240,12 @@ struct State {
         return "V1 ERR 0 UNKNOWN_VERB";
     }
 };
-void session(int fd,bool sdk_mode,bool has_gripper){
+void session(int fd,bool sdk_mode,bool has_gripper,bool alore_gain){
     struct ucred cred{}; socklen_t size=sizeof(cred);
     if(::getsockopt(fd,SOL_SOCKET,SO_PEERCRED,&cred,&size)!=0 || cred.uid!=::geteuid()){
         send_packet(fd,"V1 ERR 0 FOREIGN_UID");return;
     }
-    State state{sdk_mode,has_gripper};
+    State state{sdk_mode,has_gripper,alore_gain};
     char buf[kPacketMax];
     while(!stopping){
         state.step();
@@ -271,12 +274,14 @@ void session(int fd,bool sdk_mode,bool has_gripper){
 int main(int argc,char** argv){
     if(argc==2 && std::string(argv[1])=="--help"){
         std::cout<<"M2.4e2d: --socket /absolute/path [--backend mock]\n"
-                 <<"SDK requires build opt-in, --backend sdk, --has-gripper yes|no and bench-ack.\n";
+                 <<"SDK requires build opt-in, --backend sdk, --has-gripper yes|no, bench-ack.\n"
+                 <<"Gain profiles: --gain-profile vendor (default) or alore-v2 (EXPERIMENTAL).\n";
         return 0;
     }
     bool sdk_mode=false;
     bool ack=false;
     bool has_gripper=false,gripper_specified=false;
+    bool alore_gain=false,profile_specified=false;
     std::string path;
     for(int i=1;i<argc;++i){
         const std::string arg=argv[i];
@@ -292,6 +297,13 @@ int main(int argc,char** argv){
             else if(choice=="no")has_gripper=false;
             else {std::cerr<<"--has-gripper must be yes or no\n";return 2;}
             gripper_specified=true;
+        }else if(arg=="--gain-profile" && i+1<argc){
+            if(profile_specified){std::cerr<<"Duplicate --gain-profile\n";return 2;}
+            const std::string p=argv[++i];
+            if(p=="vendor")alore_gain=false;
+            else if(p=="alore-v2")alore_gain=true;
+            else {std::cerr<<"--gain-profile must be vendor or alore-v2\n";return 2;}
+            profile_specified=true;
         }else if(arg=="--bench-ack" && i+1<argc){ack=std::string(argv[++i])==kPhysicalAck;}
         else {std::cerr<<"Unknown/missing argument: "<<arg<<'\n';return 2;}
     }
@@ -303,8 +315,10 @@ int main(int argc,char** argv){
         if(!ack){std::cerr<<"SDK bench-ack required BEFORE any SDK load/I/O\n";return 3;}
         if(!gripper_specified){std::cerr<<"SDK needs explicit --has-gripper yes|no BEFORE any I/O\n";return 3;}
         std::cerr<<"WARNING: SDK mode has real motor effects; stop semantics NOT bench qualified.\n";
+        std::cerr<<"Gain profile: "<<(alore_gain?"ALORE V2 EXPERIMENTAL":"vendor default")
+                 <<"; load support and physical E-stop required.\n";
 #endif
-    }else if(ack || gripper_specified){
+    }else if(ack || gripper_specified || profile_specified){
         std::cerr<<"Invalid mock options\n";return 2;
     }
     if(path.empty()) {std::cerr<<"usage: --socket /absolute/path [--backend mock]\n";return 2;}
@@ -333,7 +347,7 @@ int main(int argc,char** argv){
         if(!(p.revents&POLLIN))continue;
         ScopedFd client(::accept4(listener.fd,nullptr,nullptr,SOCK_CLOEXEC));
         if(client.fd<0){if(errno==EINTR)continue;break;}
-        try {session(client.fd,sdk_mode,has_gripper);}
+        try {session(client.fd,sdk_mode,has_gripper,alore_gain);}
         catch(const std::exception& e){
             std::cerr<<"Worker session failed: "<<e.what()<<'\n';
             if(sdk_mode){stopping=1;break;} // NEVER restart live SDK after startup failure
