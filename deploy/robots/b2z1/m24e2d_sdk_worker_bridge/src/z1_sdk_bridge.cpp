@@ -22,13 +22,9 @@ public:
 };
 SdkBridge::SdkBridge(bool has_gripper):impl_(std::make_unique<Impl>(has_gripper)){}
 SdkBridge::~SdkBridge(){
-    // NO backToStart and NO implicit PASSIVE, which can lead to dropped payloads.
-    // Hardware shutdown behavior MUST be validated separately on a fixed bench.
-    if(impl_->vendor_thread_running_ && impl_->arm_ && impl_->arm_->sendRecvThread){
-        // Do not start a second send/receive owner on shutdown.
-        impl_->arm_->sendRecvThread->shutdown();
-        impl_->vendor_thread_running_=false;
-    }
+    // Covers partial start() failure as well as ordinary lifetime end.
+    // This is a best-effort vendor FSM handoff, NOT a physical safety guarantee.
+    if(impl_ && impl_->arm_) (void)stop();
 }
 bool SdkBridge::started() const noexcept {return impl_->started_;}
 bool SdkBridge::stop() noexcept {
