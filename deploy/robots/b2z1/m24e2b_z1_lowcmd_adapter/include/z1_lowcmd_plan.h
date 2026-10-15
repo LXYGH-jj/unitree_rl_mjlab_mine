@@ -34,6 +34,10 @@ public:
     bool faulted() const noexcept {return fault_;}
     const std::string& faultReason() const noexcept {return reason_;}
     bool armed() const noexcept {return armed_;}
+    // Exact reference used for HOLD and the start of TRACK, independent of
+    // feedback drift. May be outside strict target limits at initial startup;
+    // arming must be denied until the physical reference is legal.
+    Vec6 commandPosition() const noexcept {return q_command_;}
 private:
     [[noreturn]] void reject(const char*);
     void validateFeedback(const Feedback&, Time);
