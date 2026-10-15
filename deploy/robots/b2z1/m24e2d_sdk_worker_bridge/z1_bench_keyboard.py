@@ -30,7 +30,7 @@ def request(sock, msg):
 
 def state(sock, req):
     data = request(sock, f"V1 GET {req}")
-    if len(data) != 21 or data[:2] != ["V1", "STATE"] or data[3] != str(req):
+    if len(data) != 20 or data[:2] != ["V1", "STATE"] or data[3] != str(req):
         raise RuntimeError(f"Malformed feedback: {data}")
     if data[2] != "SDK":
         raise RuntimeError("Refusing non-SDK Worker")
