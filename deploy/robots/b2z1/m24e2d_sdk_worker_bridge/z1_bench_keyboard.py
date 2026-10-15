@@ -18,6 +18,23 @@ STEP_RAD = 0.005
 BENCH_MAX_DELTA_RAD = 0.03  # Per joint relative to the measured startup posture.
 PERIOD = 0.02
 
+# Mirror of the Worker bench TARGET envelope, for client-side diagnostics only.
+# Worker validation remains authoritative; do not extend these limits.
+WORKER_JOINT_LO = (-2.618, 0.0, -2.8798, -1.5184, -1.3439, -2.7925)
+WORKER_JOINT_HI = ( 2.618, 2.9671, 0.0, 1.5184, 1.3439, 2.7925)
+
+
+def require_valid_return_pose(q):
+    """Refuse an invalid saved startup target before transmitting it to Worker."""
+    for i, (angle, lower, upper) in enumerate(
+            zip(q, WORKER_JOINT_LO, WORKER_JOINT_HI)):
+        if not math.isfinite(angle) or not lower <= angle <= upper:
+            raise RuntimeError(
+                f"RETURN REFUSED: saved startup J{i + 1}={angle:+.8f} rad "
+                f"outside Worker target range [{lower:+.6f}, {upper:+.6f}]. "
+                "No return TARGET sent; closing client for Worker PASSIVE handoff."
+            )
+
 
 def request(sock, msg):
     sock.sendall(msg.encode("ascii"))
@@ -101,6 +118,10 @@ def main():
                     armed = True
                     print("\nARMED at measured joint positions", flush=True)
                 elif key == "r" and armed:
+                    # A measured startup pose may lie slightly beyond a strict
+                    # Worker target limit (e.g. J3=+0.001 with maximum 0).
+                    # Do not silently clamp toward a mechanical boundary.
+                    require_valid_return_pose(origin)
                     reference = list(origin)
                     print("\nReturning toward startup joint posture; inspect collision path.", flush=True)
                 elif key == "s":
