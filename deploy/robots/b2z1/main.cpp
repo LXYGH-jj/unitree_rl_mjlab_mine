@@ -9,6 +9,9 @@
 #include "State_ArmIKStand.h"
 #include "State_InteractiveArmIK.h"
 #include "State_JointCtrlShadow.h"
+#include "State_InteractiveArmRealPreview.h" // M2.4e2f preview ONLY
+#include "State_InteractiveArmReal.h" // M2.4e2g real candidate
+#include "StampedB2LowState.h"
 #include "State_JointCtrlMockSim.h" // M2.4d5 opt-in MuJoCo ONLY  // M2.4c2 SIM-ONLY preview FSM
 #include "FSM/State_SlowLieDown.h"
 
@@ -62,7 +65,15 @@ void init_fsm_state()
         // exit(0);
     }
     FSMState::lowcmd = std::make_unique<LowCmd_t>();
-    FSMState::lowstate = std::make_shared<LowState_t>();
+    // E2g timestamped subscriber: the stamp is written on ACTUAL DDS receipt.
+    // Old simulation/B2 defaults remain intact unless interactive_real.enabled.
+    if (param::config["interactive_real"] &&
+        param::config["interactive_real"]["enabled"] &&
+        param::config["interactive_real"]["enabled"].as<bool>()) {
+        FSMState::lowstate = std::make_shared<StampedB2LowState>();
+    } else {
+        FSMState::lowstate = std::make_shared<LowState_t>();
+    }
     FSMState::keyboard = std::make_shared<Keyboard>();
     FSMState::keyboard_joystick = std::make_shared<KeyboardJoystick>(FSMState::keyboard);
     spdlog::info("Waiting for connection to robot...");
@@ -125,6 +136,34 @@ int main(int argc, char** argv)
         if (!sim_ack || std::string(sim_ack) != "MUJOCO_LOOPBACK_NO_HARDWARE") {
             spdlog::critical("M2.4d5 requires explicit simulation-only ACK before DDS.");
             return 2;
+        }
+    }
+    // M2.4e2f is not a real-hardware FSM. Fail before DDS or mode release.
+    if (param::config["interactive_real_preview"] && !loopback_network) {
+        spdlog::critical("M2.4e2f preview refuses non-loopback network before DDS");
+        return 2;
+    }
+    // E2g fail closed BEFORE DDS, stand commands and legacy SDK ownership.
+    const auto real_cfg = param::config["interactive_real"];
+    if (real_cfg && real_cfg["enabled"] && real_cfg["enabled"].as<bool>()) {
+        const auto legacy=param::config["z1_sdk"];
+        if (legacy && legacy["enabled"] && legacy["enabled"].as<bool>()) {
+            spdlog::critical("E2g refuses old Z1 direct SDK bridge"); return 2;
+        }
+        if (!real_cfg["keyboard_only"] || !real_cfg["keyboard_only"].as<bool>()) {
+            spdlog::critical("E2g keyboard_only=true required"); return 2;
+        }
+        if (real_cfg["enable_z1_sdk_targets"] && real_cfg["enable_z1_sdk_targets"].as<bool>()) {
+            spdlog::critical("E2g Z1 real target output NOT BENCH QUALIFIED");return 2;
+        }
+        const bool b2out = real_cfg["enable_b2_output"] && real_cfg["enable_b2_output"].as<bool>();
+        const char* ack=std::getenv("B2Z1_B2_ACTUATION_ACK");
+        if (!loopback_network && (!b2out || !ack ||
+             std::string(ack)!="B2_REAL_BENCH_CONFIRMED")) {
+            spdlog::critical("E2g real network blocked: B2 actuation gate/bench ACK missing");return 2;
+        }
+        if (loopback_network && b2out) {
+            spdlog::critical("E2g forbids B2 real-output gate on loopback");return 2;
         }
     }
     unitree::robot::ChannelFactory::Instance()->Init(0, network);

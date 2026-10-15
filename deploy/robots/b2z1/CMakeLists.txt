@@ -46,6 +46,9 @@ elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
 endif()
 
 include_directories(
+  ${PROJECT_SOURCE_DIR}/m24e2g_real_control/include
+  ${PROJECT_SOURCE_DIR}/m24e2f_real_fsm_preview/include
+  ${PROJECT_SOURCE_DIR}/m24e2e_live_input/include
   /usr/include/eigen3
   /usr/local/include/ddscxx
   /usr/local/include/iceoryx/v2.0.2
@@ -105,6 +108,13 @@ target_sources(${PROJECT_NAME}_lib PRIVATE
   ${PROJECT_SOURCE_DIR}/m24d5_jointctrl_mock_fsm/src/m24d5_sim_gate.cpp
   ${PROJECT_SOURCE_DIR}/m24d1_z1_transport/src/z1_sdk_getter_snapshot.cpp
   ${B2Z1_DEPLOY_ROOT}/interactive_b2z1/sim_closed_loop/joint_target_guard.cpp
+)
+# M2.4e2f: controlled SIM-ONLY FSM preview; does not send new motor targets.
+target_sources(${PROJECT_NAME}_lib PRIVATE
+  ${PROJECT_SOURCE_DIR}/m24e2g_real_control/src/State_InteractiveArmReal.cpp
+  ${PROJECT_SOURCE_DIR}/m24e2f_real_fsm_preview/src/State_InteractiveArmRealPreview.cpp
+  ${PROJECT_SOURCE_DIR}/m24e2e_live_input/src/z1_ipc_client.cpp
+  ${PROJECT_SOURCE_DIR}/m24e2e_live_input/src/b2z1_live_input.cpp
 )
 target_compile_definitions(${PROJECT_NAME}_lib PUBLIC
   B2Z1_DEPLOY_ROOT="${B2Z1_DEPLOY_ROOT}"

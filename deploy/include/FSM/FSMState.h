@@ -62,6 +62,20 @@ public:
     void pre_run()
     {
         lowstate->update();
+        if(keyboard) keyboard->update();
+        // E2g keyboard-only development: do not merge physical wireless controller
+        // data into FSM transitions. Build a fresh remote image from keyboard only.
+        const auto real=param::config["interactive_real"];
+        if (real && real["enabled"] && real["enabled"].as<bool>() &&
+            real["keyboard_only"] && real["keyboard_only"].as<bool>()) {
+            unitree::common::REMOTE_DATA_RX key{};
+            const std::string k=keyboard?keyboard->key():std::string{};
+            if(k=="f") key.RF_RX.btn.components.up=1;
+            if(k=="g") key.RF_RX.btn.components.X=1;
+            if(k=="p") key.RF_RX.btn.components.B=1;
+            if(k=="l") key.RF_RX.btn.components.down=1;
+            lowstate->joystick.extract(key);
+        } else {
 #ifdef UNITREE_RL_MJLAB_ENABLE_Z1_SDK
         if(keyboard) {
             keyboard->update();
@@ -74,6 +88,7 @@ public:
             KeyboardJoystick::update_joystick(lowstate->joystick, keyboard->key());
         }
 #endif
+        }
     }
 
     void post_run()
@@ -92,6 +107,9 @@ public:
 
     static int lowcmd_joint_count_for_whole_body()
     {
+        const auto real=param::config["interactive_real"];
+        if(real && real["enabled"] && real["enabled"].as<bool>())
+            return 12; // REAL B2 only; Z1 must never share B2 LowCmd slots 12..17.
 #ifdef UNITREE_RL_MJLAB_ENABLE_Z1_SDK
         return z1_sdk_enabled() ? 12 : static_cast<int>(lowcmd->msg_.motor_cmd().size());
 #else
