@@ -15,6 +15,7 @@ import time
 import tty
 
 STEP_RAD = 0.005
+BENCH_MAX_DELTA_RAD = 0.03  # Per joint relative to the measured startup posture.
 PERIOD = 0.02
 
 
@@ -64,12 +65,15 @@ def main():
     if not sys.stdin.isatty():
         raise SystemExit("Interactive terminal required")
     with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as sock:
-        sock.settimeout(0.25)
+        # The Worker constructs its SDK state before answering the first HELLO.
+        # Initial FSM mode transitions can take several seconds.
+        sock.settimeout(30.0)
         sock.connect(args.socket)
         hello = request(sock, "V1 HELLO")
         if hello[:2] != ["V1", "HELLO_ACK"] or "SDK_MODE_UNQUALIFIED" not in hello:
             raise RuntimeError(f"Wrong Worker backend: {hello}")
         q, _ = state(sock, 1)
+        sock.settimeout(0.25)  # Normal loop: fail promptly on lost IPC.
         origin = list(q)  # Return-to-start means this measured posture, NOT factory home.
         reference = list(q)
         req, seq, joint, armed = 1, 0, 0, False
@@ -96,14 +100,18 @@ def main():
                     print("\nARMED at measured joint positions", flush=True)
                 elif key == "r" and armed:
                     reference = list(origin)
-                    print("\\nReturning toward startup joint posture; inspect collision path.", flush=True)
+                    print("\nReturning toward startup joint posture; inspect collision path.", flush=True)
                 elif key == "d":
                     armed = False
                     reference = list(current)
                     print("\nDISARMED", flush=True)
                 elif key in ("+", "=" , "-") and armed:
-                    reference[joint] += STEP_RAD if key in ("+", "=") else -STEP_RAD
-                    print(f"\nJoint {joint+1} target {reference[joint]:+.4f}",flush=True)
+                    candidate = reference[joint] + (STEP_RAD if key in ("+", "=") else -STEP_RAD)
+                    if abs(candidate - origin[joint]) > BENCH_MAX_DELTA_RAD + 1e-9:
+                        print("\nBench joint travel envelope reached; command ignored", flush=True)
+                    else:
+                        reference[joint] = candidate
+                        print(f"\nJoint {joint+1} target {reference[joint]:+.4f}", flush=True)
                 elif key == "q":
                     break
                 seq += 1
