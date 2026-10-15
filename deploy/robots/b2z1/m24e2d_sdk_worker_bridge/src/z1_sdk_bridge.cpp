@@ -113,7 +113,7 @@ void SdkBridge::start(){
     impl_->vendor_thread_running_=false;
     // Re-check AFTER the mode transition: LOWCMD state must not have cleared gains.
     validate_gains();
-    std::cerr << "[M2.4e2j] SDK LOWCMD active; default Kp/Kd:";
+    std::cerr << "[M2.4e2j] SDK LOWCMD transition returned success; configured Kp/Kd:";
     for(int i=0;i<6;++i)
         std::cerr << " J" << i+1 << "=" << arm.lowcmd->kp[i] << "/" << arm.lowcmd->kd[i];
     std::cerr << '\n';
