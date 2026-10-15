@@ -59,6 +59,18 @@ def state(sock, req):
     return q, data
 
 
+
+def command_reference(sock, req):
+    """Read last Planner command position, not measured joint feedback."""
+    data = request(sock, f"V1 REF {req}")
+    if (len(data) != 11 or data[:2] != ["V1", "REF"] or
+            data[2] != str(req) or data[4] not in ("HOLD", "TRACK")):
+        raise RuntimeError(f"Malformed REF packet: {data}")
+    q = [float(v) for v in data[5:11]]
+    if not all(math.isfinite(v) for v in q):
+        raise RuntimeError("Nonfinite Worker command reference")
+    return q
+
 def target(sock, seq, q, enable):
     stamp = time.monotonic_ns()
     args = " ".join(f"{x:.10f}" for x in q)
@@ -90,9 +102,11 @@ def main():
         if hello[:2] != ["V1", "HELLO_ACK"] or "SDK_MODE_UNQUALIFIED" not in hello:
             raise RuntimeError(f"Wrong Worker backend: {hello}")
         q, _ = state(sock, 1)
+        # The active HOLD setpoint can differ from measured feedback after
+        # gravity settling. Never move all other joints when arming.
+        origin = command_reference(sock, 2)
         sock.settimeout(0.25)  # Normal loop: fail promptly on lost IPC.
-        origin = list(q)  # Return-to-start means this measured posture, NOT factory home.
-        reference = list(q)
+        reference = list(origin)
         req, seq, joint, armed = 1, 0, 0, False
         sent_active_target = False
         print("M2.4e2j Z1 bench keyboard. Physical support and E-stop REQUIRED.")
@@ -100,7 +114,9 @@ def main():
         print("'r' requires ARM; returns at Worker planner limits, never auto-homes on exit.")
         print("Before 'a', client only requests feedback: it sends NO TARGET packets.")
         print("No movement commands until explicit a. Keep tool/operator clear.")
-        print("Initial q:", " ".join(f"{v:+.3f}" for v in q), flush=True)
+        print("Initial measured q:", " ".join(f"{v:+.3f}" for v in q), flush=True)
+        print("Initial commanded HOLD q:", " ".join(f"{v:+.6f}" for v in origin), flush=True)
+        print("ARM refuses if this command reference is outside Worker target limits.", flush=True)
         fd = sys.stdin.fileno()
         saved = termios.tcgetattr(fd)
         try:
@@ -114,8 +130,10 @@ def main():
                     joint = int(key)-1
                     print(f"\nSelected joint {joint+1}", flush=True)
                 elif key == "a" and not armed:
-                    require_valid_target_pose(current, "ARM")
-                    reference = list(current)
+                    # Exactly match the Worker HOLD command, not the encoder
+                    # value. Preserves command continuity at HOLD->TRACK.
+                    reference = command_reference(sock, req)
+                    require_valid_target_pose(reference, "ARM")
                     armed = True
                     print("\nARMED at measured joint positions", flush=True)
                 elif key == "r" and armed:
@@ -144,8 +162,9 @@ def main():
                           flush=True)
                 elif key == "d":
                     armed = False
-                    reference = list(current)
-                    print("\nDISARMED", flush=True)
+                    # Keep the last valid target for the disable packet; using
+                    # measured q here may be outside strict target limits.
+                    print("\nDISARMED (holding last commanded position)", flush=True)
                 elif key in ("+", "=" , "-") and armed:
                     candidate = reference[joint] + (STEP_RAD if key in ("+", "=") else -STEP_RAD)
                     if abs(candidate - origin[joint]) > BENCH_MAX_DELTA_RAD + 1e-9:
@@ -164,7 +183,7 @@ def main():
                     sent_active_target = True
                 elif sent_active_target:
                     seq += 1
-                    target(sock, seq, current, False)
+                    target(sock, seq, reference, False)
                     sent_active_target = False
                 # Do not silently suppress link or target errors.
                 remaining = PERIOD - (time.monotonic()-tick)
@@ -179,7 +198,7 @@ def main():
                     req += 1
                     current, _ = state(sock, req)
                     seq += 1
-                    target(sock, seq, current, False)
+                    target(sock, seq, reference, False)
                 except (OSError, ValueError, RuntimeError):
                     pass
             print("\nKeyboard client stopped. Verify Worker PASSIVE confirmation.", flush=True)
