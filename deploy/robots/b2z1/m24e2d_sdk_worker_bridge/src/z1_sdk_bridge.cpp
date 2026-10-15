@@ -31,6 +31,36 @@ SdkBridge::~SdkBridge(){
     }
 }
 bool SdkBridge::started() const noexcept {return impl_->started_;}
+bool SdkBridge::stop() noexcept {
+#ifndef M24E2B_ENABLE_HARDWARE_SDK
+    return false;
+#else
+    if(!impl_->arm_) return false;
+    auto& arm=*impl_->arm_;
+    // No attempts to drive a return-to-home trajectory on shutdown.
+    // A lost UDP connection cannot be made safe by sending more UDP packets.
+    bool passive_confirmed=false;
+    try {
+        if(arm._ctrlComp && arm._ctrlComp->udp &&
+           !arm._ctrlComp->udp->isDisConnect) {
+            if(!impl_->vendor_thread_running_ && arm.sendRecvThread) {
+                arm.sendRecvThread->start();
+                impl_->vendor_thread_running_=true;
+            }
+            // Vendor setFsm needs the SDK communication loop to remain active.
+            // Do not assume this transition succeeds: report the result.
+            passive_confirmed=arm.setFsm(UNITREE_ARM::ArmFSMState::PASSIVE) &&
+                arm._ctrlComp->recvState.state==UNITREE_ARM::ArmFSMState::PASSIVE;
+        }
+    } catch (...) { passive_confirmed=false; }
+    if(impl_->vendor_thread_running_ && arm.sendRecvThread) {
+        try {arm.sendRecvThread->shutdown();} catch (...) {}
+        impl_->vendor_thread_running_=false;
+    }
+    impl_->started_=false;
+    return passive_confirmed;
+#endif
+}
 void SdkBridge::start(){
 #ifndef M24E2B_ENABLE_HARDWARE_SDK
     throw std::runtime_error("M2.4e2b real SDK construction LOCKED; compile-check only");
@@ -53,6 +83,15 @@ void SdkBridge::start(){
         initial[i]=arm.lowstate->q[i];
     }
     if(!arm._ctrlComp->armModel) throw std::runtime_error("Z1 armModel unavailable before LOWCMD");
+    // Match the official C++ LOWCMD example: retain the vendor-configured gains.
+    // Never silently replace them with ALORE Python wrapper's differently scaled gains.
+    if(!arm.lowcmd || arm.lowcmd->kp.size()<6 || arm.lowcmd->kd.size()<6)
+        throw std::runtime_error("Z1 LOWCMD PD gains unavailable");
+    for(int i=0;i<6;++i) {
+        if(!std::isfinite(arm.lowcmd->kp[i]) || !std::isfinite(arm.lowcmd->kd[i]) ||
+           arm.lowcmd->kp[i]<=0 || arm.lowcmd->kd[i]<=0)
+            throw std::runtime_error("Z1 LOWCMD PD gains nonpositive/nonfinite");
+    }
     ::Vec6 model_tau=arm._ctrlComp->armModel->inverseDynamics(
         initial, ::Vec6::Zero(), ::Vec6::Zero(), ::Vec6::Zero());
     m24e2h::Vec6 measured_g{}, user_tau{};
@@ -83,6 +122,8 @@ void SdkBridge::start(){
         if(!std::isfinite(f.q[i])||!std::isfinite(f.dq[i])||!std::isfinite(f.tau[i]))
             throw std::runtime_error("nonfinite Z1 startup joint feedback");
     }
+    if(!f.sdk_connected || !f.lowcmd_reported)
+        throw std::runtime_error("Z1 LOWCMD not confirmed after startup");
     impl_->initial_=f;
     impl_->started_=true;
 #endif
