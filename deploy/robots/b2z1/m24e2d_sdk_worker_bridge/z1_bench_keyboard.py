@@ -78,7 +78,7 @@ def main():
         reference = list(q)
         req, seq, joint, armed = 1, 0, 0, False
         print("M2.4e2j Z1 bench keyboard. Physical support and E-stop REQUIRED.")
-        print("1-6 select joint; a ARM; +/- jog 0.005rad; r RETURN to start; d DISARM; q QUIT.")
+        print("1-6 select joint; a ARM; +/- jog 0.005rad; r RETURN to start; s STATUS; d DISARM; q QUIT.")
         print("'r' requires ARM; returns at Worker planner limits, never auto-homes on exit.")
         print("No movement commands until explicit a. Keep tool/operator clear.")
         print("Initial q:", " ".join(f"{v:+.3f}" for v in q), flush=True)
@@ -101,6 +101,13 @@ def main():
                 elif key == "r" and armed:
                     reference = list(origin)
                     print("\nReturning toward startup joint posture; inspect collision path.", flush=True)
+                elif key == "s":
+                    qd = [float(x) for x in _[14:20]]
+                    if not all(math.isfinite(x) for x in qd):
+                        raise RuntimeError("Nonfinite Z1 velocity feedback")
+                    deviation = max(abs(x-y) for x, y in zip(current, origin))
+                    speed = max(abs(v) for v in qd)
+                    print(f"\\nq={current} max_start_error={deviation:.4f}rad max_speed={speed:.4f}rad/s", flush=True)
                 elif key == "d":
                     armed = False
                     reference = list(current)
