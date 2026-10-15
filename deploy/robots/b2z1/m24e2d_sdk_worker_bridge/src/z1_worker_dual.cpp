@@ -35,6 +35,11 @@ using Vec6 = std::array<double, 6>;
 constexpr std::size_t kPacketMax = 512;
 constexpr auto kGoalTtl = std::chrono::milliseconds(150); // UNQUALIFIED development value
 constexpr const char* kPhysicalAck = "Z1_BENCH_ATTENDED_LOWCMDSDK_RISK_ACCEPTED";
+// Existing Worker command limits, shared by IPC validation and the Planner.
+// These are NOT certified actuator safety limits; the operator must ensure
+// adequate clearance and support before enabling physical joint motion.
+constexpr Vec6 kWorkerJointLo{-2.618, 0., -2.8798, -1.5184, -1.3439, -2.7925};
+constexpr Vec6 kWorkerJointHi{ 2.618, 2.9671, 0., 1.5184, 1.3439, 2.7925};
 // Mock uses the planner itself as a perfect position servo, NOT a physical actuator model.
 volatile sig_atomic_t stopping = 0;
 void on_signal(int) { stopping = 1; }
@@ -59,8 +64,11 @@ void require_end(std::istringstream& in) {
 }
 m24e2b::Limits development_limits(){
     m24e2b::Limits l;
-    l.lo={-2.6,0.,-2.87,-1.50,-1.32,-2.78};
-    l.hi={2.6,2.95,-.01,1.50,1.32,2.78};
+    // The previous Planner J3 upper limit was -0.01 rad, while the IPC
+    // accepts 0.0 rad. Measured startup J3 can be at 0.0; the mismatch
+    // caused an immediate fault even on an unarmed keyboard connection.
+    l.lo=kWorkerJointLo;
+    l.hi=kWorkerJointHi;
     l.velocity_max.fill(.4); l.acceleration_max.fill(.8);
     l.temperature_max.fill(75);
     l.target_ttl=kGoalTtl;
@@ -76,8 +84,8 @@ struct State {
     std::uint64_t last_stamp{0};
     Clock::time_point last_target{};
     Clock::time_point last_step{Clock::now()};
-    const Vec6 lo{-2.618, 0., -2.8798, -1.5184, -1.3439, -2.7925};
-    const Vec6 hi{2.618, 2.9671, 0., 1.5184, 1.3439, 2.7925};
+    const Vec6 lo{kWorkerJointLo};
+    const Vec6 hi{kWorkerJointHi};
     m24e2b::Planner planner{development_limits()};
     bool sdk_mode{false};
 #ifdef M24E2D_ENABLE_HARDWARE_SDK
