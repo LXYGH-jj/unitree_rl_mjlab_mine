@@ -94,6 +94,11 @@ struct State {
 #ifdef M24E2D_ENABLE_HARDWARE_SDK
     std::unique_ptr<m24e2b::SdkBridge> sdk;
     m24e2b::Feedback latest{};
+    // During LOWCMD, track=false in our planner does NOT make the vendor
+    // controller passive. Keep a fixed measured pose until the user arms.
+    Vec6 sdk_hold_q{};
+    bool sdk_hold_initialized{false};
+    bool sdk_was_tracking{false};
 #endif
     explicit State(bool use_sdk,bool has_gripper,bool alore_gain):
         planner(development_limits(use_sdk)),sdk_mode(use_sdk){
@@ -112,6 +117,12 @@ struct State {
                                     : m24e2b::GainProfile::VendorDefault);
         sdk->start(); // PHYSICAL I/O AND MODE SWITCH: runtime operator gate checked first.
         latest=sdk->initialFeedback();
+        sdk_hold_q=latest.q;
+        sdk_hold_initialized=true;
+        // This remains an ACTIVE LOWCMD position hold; the operator must
+        // support the arm and have a physical E-stop.
+        std::cerr<<"[M2.4e2k] SDK unarmed HOLD anchored at initial measured joints;"
+                    " LOWCMD still drives motors; no keyboard TARGET required.\n";
         const auto now=Clock::now();
         planner.reset(latest,now); // Reject missing/error/nonfinite/invalid real feedback.
         q=latest.q; dq=latest.dq;
@@ -149,7 +160,22 @@ struct State {
 #ifdef M24E2D_ENABLE_HARDWARE_SDK
                 // NEVER use mock state to arm planner or initialize physical joint targets.
                 // The SDK is TX+RX. This path does not imply validated UDP RX provenance.
-                const auto command=planner.tick(latest,now,dt);
+                auto command=planner.tick(latest,now,dt);
+                if(!command.track){
+                    // The Planner's normal unarmed behavior out.q=f.q follows
+                    // every measurement, cancelling position-restoring PD.
+                    // Follow the fixed-pose setpoint principle in the vendor
+                    // lowcmd_development.cpp example without touching SDK code.
+                    // Re-anchor ONCE on TRACK->HOLD (operator disarm/watchdog),
+                    // never on every feedback frame.
+                    if(!sdk_hold_initialized || sdk_was_tracking){
+                        sdk_hold_q=latest.q;
+                        sdk_hold_initialized=true;
+                    }
+                    command.q=sdk_hold_q;
+                    command.dq.fill(0.);
+                }
+                sdk_was_tracking=command.track;
                 latest=sdk->exchange(command); // one caller/thread; no concurrent vendor RX thread
                 q=latest.q;dq=latest.dq;enabled=command.track;
 #else
