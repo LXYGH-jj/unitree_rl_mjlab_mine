@@ -11,37 +11,74 @@ import time
 from pathlib import Path
 
 
+def _percentile(values, fraction):
+    """Simple nearest-rank percentile; for diagnostics only."""
+    seq = sorted(values)
+    return seq[min(len(seq) - 1, math.ceil(fraction * len(seq)) - 1)]
+
+
+def _span(values):
+    return max(values) - min(values)
+
+
+def _joint_summary(rows, label, all_six=False):
+    if not rows:
+        return
+    print(f"{label} window: {len(rows)} samples, "
+          f"{(int(rows[-1]['mono_ns'])-int(rows[0]['mono_ns']))/1e9:.3f} s")
+    for j in (range(1, 7) if all_six else (3, 4, 5)):
+        cmd = [float(r[f"qcmd_J{j}"]) for r in rows]
+        goal = [float(r[f"goal_J{j}"]) for r in rows]
+        meas = [float(r[f"qmeas_J{j}"]) for r in rows]
+        dq = [float(r[f"dqmeas_J{j}"]) for r in rows]
+        ff = [float(r[f"ff_sent_J{j}"]) for r in rows]
+        feedback_tau = [float(r[f"tau_meas_J{j}"]) for r in rows]
+        err = [m-c for m, c in zip(meas, cmd)]
+        rms_err = math.sqrt(sum(v * v for v in err) / len(err))
+        print(
+            f"  J{j}: goal_span={_span(goal):.6f} "
+            f"qcmd_span={_span(cmd):.6f} qmeas_span={_span(meas):.6f} rad "
+            f"error_rms={rms_err:.6f} error_max={max(abs(v) for v in err):.6f} rad "
+            f"max_abs_dq={max(abs(v) for v in dq):.5f} rad/s "
+            f"ff_span={_span(ff):.4f} feedback_tau_span={_span(feedback_tau):.4f} Nm"
+        )
+
+
 def analyze(csv_path):
     with open(csv_path, newline="", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
     if not rows:
         raise RuntimeError("Trace CSV has no rows")
-    for key in ("mono_ns", "cycle_dt_ms", "sdk_exchange_ms", "track",
-                "goal_J5", "qcmd_J5", "qmeas_J5", "dqmeas_J5",
-                "ff_sent_J5", "tau_meas_J5"):
-        if key not in rows[0]:
-            raise RuntimeError(f"Missing trace column: {key}")
+    required = ["mono_ns", "cycle_dt_ms", "sdk_exchange_ms", "track", "target_seq"]
+    for j in range(1, 7):
+        for prefix in ("goal", "qcmd", "dqcmd", "qmeas", "dqmeas", "ff_sent", "tau_meas"):
+            required.append(f"{prefix}_J{j}")
+    absent = [k for k in required if k not in rows[0]]
+    if absent:
+        raise RuntimeError(f"Missing trace columns: {absent}")
     dt = [float(r["cycle_dt_ms"]) for r in rows]
     sdk_io = [float(r["sdk_exchange_ms"]) for r in rows]
     active = [r for r in rows if r["track"] == "1"]
-    print(f"CSV: {csv_path} | samples={len(rows)} | TRACK={len(active)}")
-    print("Cycle dt (ms): min={:.3f} median={:.3f} max={:.3f}".format(
-        min(dt), statistics.median(dt), max(dt)))
-    print("SDK exchange (ms): median={:.3f} max={:.3f}".format(
-        statistics.median(sdk_io), max(sdk_io)))
+    hold = [r for r in rows if r["track"] == "0"]
+    print(f"CSV: {csv_path} | samples={len(rows)} | HOLD={len(hold)} | TRACK={len(active)}")
+    print("Cycle dt (ms): min={:.3f} median={:.3f} p95={:.3f} p99={:.3f} max={:.3f}".format(
+        min(dt), statistics.median(dt), _percentile(dt,.95), _percentile(dt,.99), max(dt)))
+    print("SDK exchange (ms): median={:.3f} p95={:.3f} p99={:.3f} max={:.3f}".format(
+        statistics.median(sdk_io), _percentile(sdk_io,.95), _percentile(sdk_io,.99), max(sdk_io)))
+    if hold:
+        # Only the last two seconds of the complete trace, not the last two
+        # seconds of sparse HOLD samples mixed with TRACK intervals.
+        last_ns = int(rows[-1]["mono_ns"])
+        hold_tail = [r for r in hold if int(r["mono_ns"]) >= last_ns - 2_000_000_000]
+        if hold_tail:
+            _joint_summary(hold_tail, "Final HOLD (last 2s)", all_six=True)
+        else:
+            _joint_summary(hold[-min(100,len(hold)):], "Last recorded HOLD", all_six=True)
     if active:
-        last = active[-min(100, len(active)):]
-        for j in (3, 4, 5):
-            goal = [float(r[f"goal_J{j}"]) for r in last]
-            cmd = [float(r[f"qcmd_J{j}"]) for r in last]
-            meas = [float(r[f"qmeas_J{j}"]) for r in last]
-            speed = [float(r[f"dqmeas_J{j}"]) for r in last]
-            print(f"J{j} last {len(last)} TRACK samples: "
-                  f"goal_span={max(goal)-min(goal):.7f}, "
-                  f"cmd_span={max(cmd)-min(cmd):.7f}, "
-                  f"meas_span={max(meas)-min(meas):.7f} rad, "
-                  f"max_abs_dq_meas={max(abs(v) for v in speed):.5f} rad/s")
-    print("NOTE: An SDK CSV contains getter samples, not confirmed fresh UDP timestamps.")
+        _joint_summary(active[-min(100,len(active)):], "Last 100 TRACK", all_six=False)
+    print("Interpretation: constant qcmd with varying qmeas indicates feedback motion, "
+          "not necessarily periodic oscillation; inspect the time series before diagnosis.")
+    print("NOTE: SDK timestamps mark getter sampling, not confirmed fresh UDP packets.")
     return rows
 
 
