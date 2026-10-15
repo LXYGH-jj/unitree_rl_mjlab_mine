@@ -226,6 +226,22 @@ struct State {
                 " " + std::string(fault_latched?"FAULT":"OK") +
                 " " + (code.empty()?"NONE":code);
         }
+        if(verb=="SENSE"){
+            // Additive bench-only telemetry; V1 GET layout remains unchanged.
+            if(!sdk_mode || fault_latched) return "V1 ERR 0 SDK_SENSE_UNAVAILABLE";
+            std::uint64_t req=0;
+            if(!(in>>req)||req==0) return "V1 ERR 0 INVALID_REQUEST";
+            try{require_end(in);}catch(...){return "V1 ERR 0 EXTRA_FIELDS";}
+#ifdef M24E2D_ENABLE_HARDWARE_SDK
+            std::ostringstream out;
+            out<<std::setprecision(8)<<"V1 SENSE "<<req<<' '<<mono_ns();
+            for(double v:latest.tau) out<<' '<<v;
+            for(int v:latest.temperature) out<<' '<<v;
+            return out.str();
+#else
+            return "V1 ERR 0 SDK_NOT_COMPILED";
+#endif
+        }
         if(verb=="GET"){
             if(sdk_mode && fault_latched) return "V1 ERR 0 SDK_FAULT_LATCHED";
             std::uint64_t req=0;
