@@ -107,7 +107,7 @@ def main():
                         raise RuntimeError("Nonfinite Z1 velocity feedback")
                     deviation = max(abs(x-y) for x, y in zip(current, origin))
                     speed = max(abs(v) for v in qd)
-                    print(f"\\nq={current} max_start_error={deviation:.4f}rad max_speed={speed:.4f}rad/s", flush=True)
+                    print(f"\nq={current} max_start_error={deviation:.4f}rad max_speed={speed:.4f}rad/s", flush=True)
                 elif key == "d":
                     armed = False
                     reference = list(current)
