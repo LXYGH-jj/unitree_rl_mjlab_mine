@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""M2.4e2j: Z1-only manual bench control via the existing V1 Unix IPC protocol.
+
+Never invokes B2, MuJoCo, or the SDK directly. The Worker owns the Z1 SDK.
+Requires a mechanically secured arm, accessible physical E-stop and an operator.
+"""
+import argparse
+import os
+import select
+import socket
+import sys
+import termios
+import time
+import tty
+
+STEP_RAD = 0.005
+PERIOD = 0.02
+
+
+def request(sock, msg):
+    sock.sendall(msg.encode("ascii"))
+    payload = sock.recv(512)
+    if not payload:
+        raise RuntimeError("Worker closed IPC connection")
+    ans = payload.decode("ascii", errors="replace")
+    if ans.startswith("V1 ERR"):
+        raise RuntimeError(ans)
+    return ans.split()
+
+
+def state(sock, req):
+    data = request(sock, f"V1 GET {req}")
+    if len(data) != 21 or data[:2] != ["V1", "STATE"] or data[3] != str(req):
+        raise RuntimeError(f"Malformed feedback: {data}")
+    if data[2] != "SDK":
+        raise RuntimeError("Refusing non-SDK Worker")
+    return [float(x) for x in data[8:14]], data
+
+
+def target(sock, seq, q, enable):
+    stamp = time.monotonic_ns()
+    args = " ".join(f"{x:.10f}" for x in q)
+    msg = f"V1 TARGET {seq} {stamp} {int(enable)} {args}"
+    ans = request(sock, msg)
+    if ans[:3] != ["V1", "ACK", str(seq)]:
+        raise RuntimeError(f"Unexpected target response: {ans}")
+
+
+def keypress(timeout):
+    ready, _, _ = select.select([sys.stdin], [], [], timeout)
+    if not ready:
+        return ""
+    return os.read(sys.stdin.fileno(), 1).decode("ascii", errors="ignore")
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--socket", default="/tmp/b2z1_z1_worker.sock")
+    args = ap.parse_args()
+    if not sys.stdin.isatty():
+        raise SystemExit("Interactive terminal required")
+    with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as sock:
+        sock.settimeout(0.25)
+        sock.connect(args.socket)
+        hello = request(sock, "V1 HELLO")
+        if hello[:2] != ["V1", "HELLO_ACK"] or "SDK_MODE_UNQUALIFIED" not in hello:
+            raise RuntimeError(f"Wrong Worker backend: {hello}")
+        q, _ = state(sock, 1)
+        reference = list(q)
+        req, seq, joint, armed = 1, 0, 0, False
+        print("M2.4e2j Z1 bench keyboard. Physical support and E-stop REQUIRED.")
+        print("1-6 select joint; a ARM; +/- jog 0.005rad; d DISARM; q QUIT.")
+        print("No movement commands until explicit a. Keep tool/operator clear.")
+        print("Initial q:", " ".join(f"{v:+.3f}" for v in q), flush=True)
+        fd = sys.stdin.fileno()
+        saved = termios.tcgetattr(fd)
+        try:
+            tty.setcbreak(fd)
+            while True:
+                tick = time.monotonic()
+                key = keypress(PERIOD)
+                req += 1
+                current, _ = state(sock, req)
+                if key in "123456" and key:
+                    joint = int(key)-1
+                    print(f"\nSelected joint {joint+1}", flush=True)
+                elif key == "a" and not armed:
+                    reference = list(current)
+                    armed = True
+                    print("\nARMED at measured joint positions", flush=True)
+                elif key == "d":
+                    armed = False
+                    reference = list(current)
+                    print("\nDISARMED", flush=True)
+                elif key in ("+", "=" , "-") and armed:
+                    reference[joint] += STEP_RAD if key in ("+", "=") else -STEP_RAD
+                    print(f"\nJoint {joint+1} target {reference[joint]:+.4f}",flush=True)
+                elif key == "q":
+                    break
+                seq += 1
+                target(sock, seq, reference if armed else current, armed)
+                # Do not silently suppress link or target errors.
+                remaining = PERIOD - (time.monotonic()-tick)
+                if remaining > 0:
+                    time.sleep(remaining)
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+            try:
+                req += 1
+                current, _ = state(sock, req)
+                seq += 1
+                target(sock, seq, current, False)
+            except (OSError, ValueError, RuntimeError):
+                pass
+            print("\nKeyboard client stopped. Verify Worker PASSIVE confirmation.", flush=True)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, RuntimeError, ValueError) as e:
+        print(f"ERROR: {e}; use physical E-stop if arm is not controlled", file=sys.stderr)
+        raise SystemExit(1)
