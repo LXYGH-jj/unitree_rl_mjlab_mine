@@ -7,6 +7,8 @@
 #include <unitree_arm_sdk/message/arm_common.h>
 #include <stdexcept>
 #include <cmath>
+#include <iostream>
+#include <string>
 #include <thread>
 namespace m24e2b {
 class SdkBridge::Impl {
@@ -81,15 +83,22 @@ void SdkBridge::start(){
         initial[i]=arm.lowstate->q[i];
     }
     if(!arm._ctrlComp->armModel) throw std::runtime_error("Z1 armModel unavailable before LOWCMD");
-    // Match the official C++ LOWCMD example: retain the vendor-configured gains.
-    // Never silently replace them with ALORE Python wrapper's differently scaled gains.
-    if(!arm.lowcmd || arm.lowcmd->kp.size()<6 || arm.lowcmd->kd.size()<6)
-        throw std::runtime_error("Z1 LOWCMD PD gains unavailable");
-    for(int i=0;i<6;++i) {
-        if(!std::isfinite(arm.lowcmd->kp[i]) || !std::isfinite(arm.lowcmd->kd[i]) ||
-           arm.lowcmd->kp[i]<=0 || arm.lowcmd->kd[i]<=0)
-            throw std::runtime_error("Z1 LOWCMD PD gains nonpositive/nonfinite");
-    }
+    // PASSIVE gains may be zero. That is NOT a LOWCMD initialization fault.
+    // Initialize with the official C++ SDK defaults before the LOWCMD transition
+    // so that the first low-level command has explicitly configured gains.
+    // Do not mix in ALORE Python binding's differently-scaled gains.
+    if(!arm.lowcmd) throw std::runtime_error("Z1 lowcmd unavailable");
+    arm.lowcmd->setControlGain();
+    const auto validate_gains=[&arm]() {
+        if(arm.lowcmd->kp.size()<6 || arm.lowcmd->kd.size()<6)
+            throw std::runtime_error("Z1 LOWCMD PD gains unavailable");
+        for(int i=0;i<6;++i) {
+            const double kp=arm.lowcmd->kp[i], kd=arm.lowcmd->kd[i];
+            if(!std::isfinite(kp) || !std::isfinite(kd) || kp<=0 || kd<=0)
+                throw std::runtime_error("Z1 LOWCMD PD gains nonpositive/nonfinite at joint "+std::to_string(i+1));
+        }
+    };
+    validate_gains();
     ::Vec6 model_tau=arm._ctrlComp->armModel->inverseDynamics(
         initial, ::Vec6::Zero(), ::Vec6::Zero(), ::Vec6::Zero());
     m24e2h::Vec6 measured_g{}, user_tau{};
@@ -102,6 +111,12 @@ void SdkBridge::start(){
         throw std::runtime_error("LOWCMD transition failed");
     arm.sendRecvThread->shutdown();  // exclusive sendRecv owner after this point
     impl_->vendor_thread_running_=false;
+    // Re-check AFTER the mode transition: LOWCMD state must not have cleared gains.
+    validate_gains();
+    std::cerr << "[M2.4e2j] SDK LOWCMD active; default Kp/Kd:";
+    for(int i=0;i<6;++i)
+        std::cerr << " J" << i+1 << "=" << arm.lowcmd->kp[i] << "/" << arm.lowcmd->kd[i];
+    std::cerr << '\n';
     // Capture actual, measured startup joints. Never use ALORE default pose as real state.
     // Timestamp represents SDK getter sampling, not an independently proven UDP RX.
     const auto* l=arm.lowstate;
