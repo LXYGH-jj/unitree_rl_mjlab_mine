@@ -70,6 +70,7 @@ int main() {
         goal[4]+=0.005;
         std::uint64_t seq=2;
         double max_speed=0.0;
+        double previous_q5=startup[4];
         for(int i=0;i<280;i++){
             if(i%10==0){
                 planner.acceptTarget(Target{seq++,now,goal,true},now);
@@ -77,7 +78,11 @@ int main() {
             now+=delta;
             const auto cmd=planner.tick(feedback(measured,now),now,dt);
             require(cmd.track,"TRACK watchdog expired during regression");
-            require(std::abs(cmd.q[4]-goal[4])<=0.005001,"J5 target overshoot");
+            require(cmd.q[4]>=previous_q5-1e-11,
+                    "Fixed J5 goal produced backwards planned movement");
+            require(cmd.q[4]<=goal[4]+1e-11,
+                    "Fixed J5 goal was overshot");
+            previous_q5=cmd.q[4];
             for(int j=0;j<6;j++)
                 max_speed=std::max(max_speed,std::abs(cmd.dq[j]));
             require(max_speed<=0.100000001,"planner velocity exceeded limit");
@@ -85,6 +90,17 @@ int main() {
         }
         require(std::abs(planner.commandPosition()[4]-goal[4])<1e-8,
                 "J5 planned target never reached");
+        // Previously velocity-only target tracking repeatedly crossed goal.
+        // Holding a fixed target for another 0.25 s must never move qcmd.
+        for(int i=0;i<100;i++){
+            if(i%10==0)planner.acceptTarget(Target{seq++,now,goal,true},now);
+            now+=delta;
+            const auto settled=planner.tick(feedback(measured,now),now,dt);
+            require(std::abs(settled.q[4]-goal[4])<1e-10,
+                    "Settled J5 command oscillates without a new target");
+            require(std::abs(settled.dq[4])<1e-10,
+                    "Settled J5 commanded velocity not zero");
+        }
 
         // DISARM while measured position differs from command. Keep last
         // position command (no sudden q jump), command zero velocity.
