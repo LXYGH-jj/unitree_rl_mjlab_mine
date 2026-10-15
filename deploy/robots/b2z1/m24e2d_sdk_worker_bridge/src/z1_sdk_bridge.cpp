@@ -13,8 +13,9 @@
 namespace m24e2b {
 class SdkBridge::Impl {
 public:
-    explicit Impl(bool with_gripper):with_gripper_(with_gripper){}
+    explicit Impl(bool with_gripper, GainProfile profile):with_gripper_(with_gripper),gain_profile_(profile){}
     bool with_gripper_{false};
+    GainProfile gain_profile_{GainProfile::VendorDefault};
     bool started_{false};
     bool stop_attempted_{false};
     bool vendor_thread_running_{false};
@@ -23,7 +24,7 @@ public:
     Feedback initial_{};
     // SDK background thread used ONLY during mode transition, never during exchange().
 };
-SdkBridge::SdkBridge(bool has_gripper):impl_(std::make_unique<Impl>(has_gripper)){}
+SdkBridge::SdkBridge(bool has_gripper, GainProfile profile):impl_(std::make_unique<Impl>(has_gripper,profile)){}
 SdkBridge::~SdkBridge(){
     // Covers partial start() failure as well as ordinary lifetime end.
     // This is a best-effort vendor FSM handoff, NOT a physical safety guarantee.
@@ -89,6 +90,24 @@ void SdkBridge::start(){
     // Do not mix in ALORE Python binding's differently-scaled gains.
     if(!arm.lowcmd) throw std::runtime_error("Z1 lowcmd unavailable");
     arm.lowcmd->setControlGain();
+    if(impl_->gain_profile_==GainProfile::AloreV2) {
+        // ALORE Deployment/Z1_deploy/z1_control.py:
+        // desired effective Kp=[264,328,264,264,264,264],
+        // effective Kd=[1.5,3.0,1.5,1.5,1.5,1.5].
+        // Z1 controller V2 uses Kp*25.6 and Kd*0.0128 on the wire.
+        // Preserve any existing gripper gain by only replacing joints 1..6.
+        if(arm.lowcmd->kp.size()<6 || arm.lowcmd->kd.size()<6)
+            throw std::runtime_error("Z1 LOWCMD gains unavailable for ALORE profile");
+        auto kp=arm.lowcmd->kp;
+        auto kd=arm.lowcmd->kd;
+        const double kp_effective[6]={264.,328.,264.,264.,264.,264.};
+        const double kd_effective[6]={1.5,3.0,1.5,1.5,1.5,1.5};
+        for(int i=0;i<6;++i) {
+            kp[i]=kp_effective[i]/25.6;
+            kd[i]=kd_effective[i]/0.0128;
+        }
+        arm.lowcmd->setControlGain(kp,kd);
+    }
     const auto validate_gains=[&arm]() {
         if(arm.lowcmd->kp.size()<6 || arm.lowcmd->kd.size()<6)
             throw std::runtime_error("Z1 LOWCMD PD gains unavailable");
@@ -113,7 +132,9 @@ void SdkBridge::start(){
     impl_->vendor_thread_running_=false;
     // Re-check AFTER the mode transition: LOWCMD state must not have cleared gains.
     validate_gains();
-    std::cerr << "[M2.4e2j] SDK LOWCMD transition returned success; configured Kp/Kd:";
+    std::cerr << "[M2.4e2k] SDK LOWCMD transition returned success; gain_profile="
+              << (impl_->gain_profile_==GainProfile::AloreV2?"alore-v2":"vendor")
+              << " (SDK protocol Kp/Kd):";
     for(int i=0;i<6;++i)
         std::cerr << " J" << i+1 << "=" << arm.lowcmd->kp[i] << "/" << arm.lowcmd->kd[i];
     std::cerr << '\n';
