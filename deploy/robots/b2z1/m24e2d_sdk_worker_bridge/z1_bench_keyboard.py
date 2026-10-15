@@ -5,6 +5,7 @@ Never invokes B2, MuJoCo, or the SDK directly. The Worker owns the Z1 SDK.
 Requires a mechanically secured arm, accessible physical E-stop and an operator.
 """
 import argparse
+import math
 import os
 import select
 import socket
@@ -34,7 +35,10 @@ def state(sock, req):
         raise RuntimeError(f"Malformed feedback: {data}")
     if data[2] != "SDK":
         raise RuntimeError("Refusing non-SDK Worker")
-    return [float(x) for x in data[8:14]], data
+    q = [float(x) for x in data[8:14]]
+    if not all(math.isfinite(x) for x in q):
+        raise RuntimeError("Nonfinite Z1 joint feedback")
+    return q, data
 
 
 def target(sock, seq, q, enable):
@@ -66,10 +70,12 @@ def main():
         if hello[:2] != ["V1", "HELLO_ACK"] or "SDK_MODE_UNQUALIFIED" not in hello:
             raise RuntimeError(f"Wrong Worker backend: {hello}")
         q, _ = state(sock, 1)
+        origin = list(q)  # Return-to-start means this measured posture, NOT factory home.
         reference = list(q)
         req, seq, joint, armed = 1, 0, 0, False
         print("M2.4e2j Z1 bench keyboard. Physical support and E-stop REQUIRED.")
-        print("1-6 select joint; a ARM; +/- jog 0.005rad; d DISARM; q QUIT.")
+        print("1-6 select joint; a ARM; +/- jog 0.005rad; r RETURN to start; d DISARM; q QUIT.")
+        print("'r' requires ARM; returns at Worker planner limits, never auto-homes on exit.")
         print("No movement commands until explicit a. Keep tool/operator clear.")
         print("Initial q:", " ".join(f"{v:+.3f}" for v in q), flush=True)
         fd = sys.stdin.fileno()
@@ -88,6 +94,9 @@ def main():
                     reference = list(current)
                     armed = True
                     print("\nARMED at measured joint positions", flush=True)
+                elif key == "r" and armed:
+                    reference = list(origin)
+                    print("\\nReturning toward startup joint posture; inspect collision path.", flush=True)
                 elif key == "d":
                     armed = False
                     reference = list(current)
