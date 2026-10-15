@@ -16,6 +16,7 @@ struct Limits {
 };
 struct Feedback {
     Vec6 q{}, dq{}, tau{};
+    Vec6 sent_feedforward_tau{}; // Last SDK model+extra torque command, not motor feedback.
     std::array<int,6> temperature{}, motor_error{}, motor_connection{};
     bool sdk_connected{false};
     bool lowcmd_reported{false};
