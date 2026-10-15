@@ -48,10 +48,12 @@ Command Planner::tick(const Feedback& f,Time now,double dt){
     Command out{};
     if(armed_&&now-target_.issued_at>limits_.target_ttl){armed_=false;reason_="target watchdog expired";}
     if(!armed_){
-        // On timeout, follow measured configuration rather than a prior moving target.
-        // This is a *software target hold*, NOT proof of physical safe stop.
-        q_command_=f.q;last_velocity_.fill(0);
-        out.q=f.q;out.dq.fill(0);out.track=false;return out;
+        // Keep the LAST ACTUALLY COMMANDED joint position, not the latest
+        // measured position. Otherwise HOLD and TRACK start from two different
+        // references when feedback settles under gravity (e.g. Z1 J3).
+        // No automatic homing, recentering or hard-limit clamping.
+        last_velocity_.fill(0);
+        out.q=q_command_;out.dq.fill(0);out.track=false;return out;
     }
     // Rate + acceleration limited planned position. No PD gains or real force limits here.
     for(int i=0;i<6;i++){
