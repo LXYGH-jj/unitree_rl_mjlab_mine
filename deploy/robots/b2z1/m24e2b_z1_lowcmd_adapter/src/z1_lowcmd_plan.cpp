@@ -57,14 +57,29 @@ Command Planner::tick(const Feedback& f,Time now,double dt){
     }
     // Rate + acceleration limited planned position. No PD gains or real force limits here.
     for(int i=0;i<6;i++){
-        const double desired_v=std::clamp((target_.q[i]-q_command_[i])/dt,-limits_.velocity_max[i],limits_.velocity_max[i]);
+        const double error=target_.q[i]-q_command_[i];
         const double step_a=limits_.acceleration_max[i]*dt;
-        const double next_v=std::clamp(desired_v,last_velocity_[i]-step_a,last_velocity_[i]+step_a);
-        const double proposed=std::clamp(q_command_[i]+next_v*dt,limits_.lo[i],limits_.hi[i]);
+        // Old velocity-only target tracking accelerated toward a fixed target
+        // until it was too late to brake, overshooting and generating a
+        // repeated back-and-forth qcmd (visible even without motor dynamics).
+        // Bound the approach speed by the remaining stopping distance.
+        const double braking_speed=std::sqrt(
+            2.0*limits_.acceleration_max[i]*std::abs(error));
+        const double desired_v=std::copysign(
+            std::min({limits_.velocity_max[i],braking_speed,std::abs(error)/dt}),
+            error);
+        const double next_v=std::clamp(
+            desired_v,last_velocity_[i]-step_a,last_velocity_[i]+step_a);
+        double proposed=q_command_[i]+next_v*dt;
+        // An unchanging point target must never be repeatedly crossed by
+        // the planned qcmd. Stop at the exact point (no auto homing).
+        if(std::abs(error)<=1e-12 ||
+           (error>0.0 && proposed>=target_.q[i]) ||
+           (error<0.0 && proposed<=target_.q[i]))
+            proposed=target_.q[i];
+        proposed=std::clamp(proposed,limits_.lo[i],limits_.hi[i]);
         if(std::abs(proposed-f.q[i])>0.30) reject("tracking error exceeds offline guard");
-        // Reconstruction via position delta / dt can exceed velocity_max by
-        // floating-point roundoff even though desired_v was clamped.
-        // Keep the emitted velocity within the same original bound.
+        // Position-derived speed cannot exceed the original velocity bound.
         out.dq[i]=std::clamp((proposed-q_command_[i])/dt,
                              -limits_.velocity_max[i],limits_.velocity_max[i]);
         q_command_[i]=proposed;last_velocity_[i]=out.dq[i];out.q[i]=proposed;
