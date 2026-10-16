@@ -22,17 +22,31 @@ PERIOD = 0.02
 # Worker validation remains authoritative; do not extend these limits.
 WORKER_JOINT_LO = (-2.618, 0.0, -2.8798, -1.5184, -1.3439, -2.7925)
 WORKER_JOINT_HI = ( 2.618, 2.9671, 0.0, 1.5184, 1.3439, 2.7925)
+J3_STARTUP_ZERO_SLACK_RAD = 0.0015  # Must match Planner C++.
+J3_ANCHOR_EQUALITY_RAD = 1e-8
 
 
-def require_valid_target_pose(q, action):
-    """Reject an invalid measured/return target BEFORE sending it to the Worker."""
-    for i, (angle, lower, upper) in enumerate(
-            zip(q, WORKER_JOINT_LO, WORKER_JOINT_HI)):
-        if not math.isfinite(angle) or not lower <= angle <= upper:
+def allowed_bench_target(joint, angle, startup):
+    lower, upper = WORKER_JOINT_LO[joint], WORKER_JOINT_HI[joint]
+    if not math.isfinite(angle) or not math.isfinite(startup[joint]):
+        return False
+    if lower <= angle <= upper:
+        return True
+    return (joint == 2 and upper < startup[2] <= upper + J3_STARTUP_ZERO_SLACK_RAD
+            and abs(angle-startup[2]) <= J3_ANCHOR_EQUALITY_RAD)
+
+
+
+def require_valid_target_pose(q, action, startup):
+    """Reject a new out-of-bounds target, except the unchanged startup J3."""
+    for i, angle in enumerate(q):
+        if not allowed_bench_target(i, angle, startup):
+            lower, upper = WORKER_JOINT_LO[i], WORKER_JOINT_HI[i]
             raise RuntimeError(
                 f"{action} REFUSED: J{i + 1}={angle:+.8f} rad "
                 f"outside Worker target range [{lower:+.6f}, {upper:+.6f}]. "
-                "No TARGET sent; closing client for Worker PASSIVE handoff."
+                "Only the unchanged J3 startup position within +0.0015 rad "
+                "is admissible. No TARGET sent; closing client."
             )
 
 
@@ -116,7 +130,7 @@ def main():
         print("No movement commands until explicit a. Keep tool/operator clear.")
         print("Initial measured q:", " ".join(f"{v:+.3f}" for v in q), flush=True)
         print("Initial commanded HOLD q:", " ".join(f"{v:+.6f}" for v in origin), flush=True)
-        print("ARM refuses if this command reference is outside Worker target limits.", flush=True)
+        print("J3 startup near zero: only the unchanged initial +0..0.0015 rad is allowed.", flush=True)
         fd = sys.stdin.fileno()
         saved = termios.tcgetattr(fd)
         try:
@@ -133,14 +147,14 @@ def main():
                     # Exactly match the Worker HOLD command, not the encoder
                     # value. Preserves command continuity at HOLD->TRACK.
                     reference = command_reference(sock, req)
-                    require_valid_target_pose(reference, "ARM")
+                    require_valid_target_pose(reference, "ARM", origin)
                     armed = True
-                    print("\nARMED at measured joint positions", flush=True)
+                    print("\nARMED at current commanded position", flush=True)
                 elif key == "r" and armed:
                     # A measured startup pose may lie slightly beyond a strict
                     # Worker target limit (e.g. J3=+0.001 with maximum 0).
                     # Do not silently clamp toward a mechanical boundary.
-                    require_valid_target_pose(origin, "RETURN")
+                    require_valid_target_pose(origin, "RETURN", origin)
                     reference = list(origin)
                     print("\nReturning toward startup joint posture; inspect collision path.", flush=True)
                 elif key == "s":
@@ -169,6 +183,8 @@ def main():
                     candidate = reference[joint] + (STEP_RAD if key in ("+", "=") else -STEP_RAD)
                     if abs(candidate - origin[joint]) > BENCH_MAX_DELTA_RAD + 1e-9:
                         print("\nBench joint travel envelope reached; command ignored", flush=True)
+                    elif not allowed_bench_target(joint, candidate, origin):
+                        print("\nTarget exceeds Worker joint limits; command ignored", flush=True)
                     else:
                         reference[joint] = candidate
                         print(f"\nJoint {joint+1} target {reference[joint]:+.4f}", flush=True)
