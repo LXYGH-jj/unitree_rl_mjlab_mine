@@ -47,6 +47,9 @@ private:
     bool arm_initialized_=false, faulted_=false, send_b2_=false, output_pending_=false;
     bool walk_enabled_=false, walking_=false, motion_was_started_=false, walk_rearm_=false;
     bool use_ik_goal_=true;
+    // Explicit mock-only FSM keyboard jog. Never authorizes real SDK TARGET.
+    bool mock_j5_jog_=false;
+    double mock_j5_delta_=0.0;
     float b2_kp_=360.f,b2_kd_=5.f;
     float stand_step_=0.008f,walk_step_=0.04f;
     double tcp_offset_=0.0882;
