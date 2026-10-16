@@ -65,6 +65,21 @@ target_sources(${PROJECT_NAME}_lib PRIVATE
         self.assertFalse(after['interactive_real']['enable_b2_output'])
         self.assertFalse(after['interactive_real']['enable_z1_sdk_targets'])
 
+class MockJointConfigTests(unittest.TestCase):
+    def test_mock_j5_only_config(self):
+        conf=yaml.safe_load((BASE.parents[0]/'config/config_m24e2g_mock_joint_jog_sim.yaml').read_text())
+        i=conf['interactive_real']
+        self.assertTrue(i['enabled'])
+        self.assertEqual(i['z1_backend'],'mock')
+        self.assertTrue(i['enable_mock_z1_j5_jog'])
+        self.assertFalse(i['enable_b2_output'])
+        self.assertFalse(i['enable_z1_sdk_targets'])
+        self.assertFalse(i['enable_walking'])
+        self.assertFalse(conf['z1_sdk']['enabled'])
+        self.assertFalse(conf['z1_diagnostic']['enabled'])
+        self.assertEqual(conf['FSM']['_']['InteractiveArmReal']['type'],'InteractiveArmReal')
+
+
 class SourceGuards(unittest.TestCase):
     def test_timestamps_locked_and_motor_scope(self):
         base=(BASE/'include/StampedB2LowState.h').read_text()
