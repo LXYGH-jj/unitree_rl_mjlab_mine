@@ -300,16 +300,17 @@ struct State {
             }
             if(enable_int!=0 && enable_int!=1) return "V1 ERR 0 INVALID_ENABLE";
             if(enable_int==1 && !planner.armed()){
-                // Exact startup J3 command is admissible only up to +0.0015
-                // rad above zero. No automatic clamp or outward travel.
+                // Startup J2 in [-0.0015,0) or J3 in (0,+0.0015]
+                // is admissible ONLY unchanged. No automatic clamp or
+                // outward movement is permitted by the Planner.
                 const auto hold_ref=planner.commandPosition();
                 for(int i=0;i<6;++i)
                     if(!planner.targetAllowed(i,hold_ref[i]))
                         return "V1 ERR 0 HOLD_REFERENCE_OUT_OF_LIMIT_J"+std::to_string(i+1);
             }
-            // Match Planner validation exactly; the only J3 exception is
-            // reproducing the measured startup command within +0.0015 rad.
-            // No newly requested travel outside the original bounds.
+            // Match Planner validation exactly: only frozen startup J2/J3
+            // references near zero may lie just outside original bounds.
+            // No newly requested outward travel beyond those bounds.
             for(int i=0;i<6;++i)if(!planner.targetAllowed(i,next[i])){
                 enabled=false;fault_latched=true;planner.disarm();
                 fault_reason="TARGET_OUT_OF_LIMIT";
