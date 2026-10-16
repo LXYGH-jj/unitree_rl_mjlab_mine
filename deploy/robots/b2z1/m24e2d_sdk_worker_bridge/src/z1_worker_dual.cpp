@@ -146,8 +146,6 @@ struct State {
     std::uint64_t last_stamp{0};
     Clock::time_point last_target{};
     Clock::time_point last_step{Clock::now()};
-    const Vec6 lo{kWorkerJointLo};
-    const Vec6 hi{kWorkerJointHi};
     m24e2b::Planner planner;
     bool sdk_mode{false};
     Vec6 goal_q{}; // Last accepted keyboard target; diagnostics only.
@@ -302,9 +300,8 @@ struct State {
             }
             if(enable_int!=0 && enable_int!=1) return "V1 ERR 0 INVALID_ENABLE";
             if(enable_int==1 && !planner.armed()){
-                // Fail closed if HOLD started just outside a strict target
-                // boundary, e.g. J3=+0.00064 with J3 upper limit 0.
-                // Never silently move/clamp an arm toward its hard stop on ARM.
+                // Exact startup J3 command is admissible only up to +0.0015
+                // rad above zero. No automatic clamp or outward travel.
                 const auto hold_ref=planner.commandPosition();
                 for(int i=0;i<6;++i)
                     if(!planner.targetAllowed(i,hold_ref[i]))
