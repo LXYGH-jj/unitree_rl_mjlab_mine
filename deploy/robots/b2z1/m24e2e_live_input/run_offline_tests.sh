@@ -30,5 +30,6 @@ trap 'kill "$wpid" 2>/dev/null || true; wait "$wpid" 2>/dev/null || true; rm -rf
 for _ in {1..100}; do [[ -S "$SOCKET" ]] && break; sleep .01; done
 [[ -S "$SOCKET" ]] || { cat "$BD/worker.log"; exit 2; }
 "$BD/build/m24e2e_client_test" "$SOCKET"
+"$BD/build/m24e2e_mock_j5_control_test" "$SOCKET"
 python3 "$ROOT/tests/test_source_guards.py" "$REPO"
 echo 'M2.4e2e ALL OFFLINE TESTS PASS; no DDS, vendor SDK or motor IO'
