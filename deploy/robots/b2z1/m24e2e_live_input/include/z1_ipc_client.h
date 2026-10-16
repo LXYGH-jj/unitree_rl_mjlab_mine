@@ -41,23 +41,32 @@ private:
 
 // One transport thread; main FSM reads cache only (nonblocking).
 // NO auto reconnect after failures; explicit restart required.
-// SDK-target sending deliberately not implemented until bench stop semantics qualified.
+// Mock J5 target support is an explicit SIM-ONLY opt-in, SDK TARGET stays LOCKED.
 class ReadOnlyPoller final {
 public:
     ReadOnlyPoller()=default;
     ~ReadOnlyPoller();
     ReadOnlyPoller(const ReadOnlyPoller&)=delete;
     ReadOnlyPoller& operator=(const ReadOnlyPoller&)=delete;
-    void start(const std::string& path, Mode expected, int timeout_ms=40);
+    // mock_j5_control is SIMULATION ONLY. SDK remains entirely GET-only.
+    // One IPC connection owner handles both GET and mock TARGET.
+    void start(const std::string& path, Mode expected, int timeout_ms=40,
+               bool mock_j5_control=false);
+    // Target is relative to first Mock GET J5. +/-0.03 rad maximum;
+    // call only on validated keyboard events, never automatically from policy.
+    void setMockJ5Delta(double delta_rad);
     void stop() noexcept;
     bool latest(ArmState& out, std::string& error) const;
 private:
-    void loop(std::string path, Mode expected, int timeout_ms) noexcept;
+    void loop(std::string path, Mode expected, int timeout_ms,
+              bool mock_j5_control) noexcept;
     std::thread thread_{};
     std::atomic<bool> stop_{false};
     mutable std::mutex mu_{};
     ArmState latest_{};
     bool available_{false};
+    bool mock_j5_control_{false};
+    double mock_j5_delta_{0.0};
     std::string error_{"NOT_STARTED"};
 };
 }
