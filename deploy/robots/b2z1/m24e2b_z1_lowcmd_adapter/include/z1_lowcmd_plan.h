@@ -56,6 +56,9 @@ public:
     // arming must be denied until the physical reference is legal.
     Vec6 commandPosition() const noexcept {return q_command_;}
     Vec6 startupPosition() const noexcept {return startup_q_;}
+    bool targetAllowed(int joint,double q) const noexcept {
+        return targetWithinBenchLimits(joint,q,startup_q_,limits_);
+    }
 private:
     [[noreturn]] void reject(const char*);
     void validateFeedback(const Feedback&, Time);
