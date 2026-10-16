@@ -104,32 +104,73 @@ void Session::target(std::uint64_t seq, const Vec6& q, bool enable){
         throw std::runtime_error("IPC target rejected: "+reply);
 }
 ReadOnlyPoller::~ReadOnlyPoller(){stop();}
-void ReadOnlyPoller::start(const std::string& path,Mode expected,int timeout_ms){
+void ReadOnlyPoller::start(const std::string& path,Mode expected,
+                           int timeout_ms,bool mock_j5_control){
     stop();
-    {std::lock_guard<std::mutex> lk(mu_);available_=false;error_="CONNECTING";}
+    if(mock_j5_control && expected!=Mode::Mock)
+        throw std::invalid_argument("Mock J5 targets cannot use SDK worker");
+    {
+        std::lock_guard<std::mutex> lk(mu_);
+        available_=false;error_="CONNECTING";
+        mock_j5_control_=mock_j5_control;mock_j5_delta_=0.0;
+    }
     stop_=false;
-    thread_=std::thread(&ReadOnlyPoller::loop,this,path,expected,timeout_ms);
+    thread_=std::thread(&ReadOnlyPoller::loop,this,path,expected,timeout_ms,
+                        mock_j5_control);
+}
+void ReadOnlyPoller::setMockJ5Delta(double delta_rad){
+    if(!std::isfinite(delta_rad) || std::abs(delta_rad)>0.0300000001)
+        throw std::invalid_argument("Mock J5 jog must remain inside +/-0.03 rad");
+    std::lock_guard<std::mutex> lk(mu_);
+    if(!mock_j5_control_ || !thread_.joinable() || !available_)
+        throw std::runtime_error("Mock J5 control unavailable/not connected");
+    mock_j5_delta_=delta_rad;
 }
 void ReadOnlyPoller::stop() noexcept{
     stop_=true;
     if(thread_.joinable())thread_.join();
     std::lock_guard<std::mutex> lk(mu_);
-    available_=false;
+    available_=false;mock_j5_control_=false;mock_j5_delta_=0.;
     error_="STOPPED";
 }
 bool ReadOnlyPoller::latest(ArmState& out,std::string& error)const{
     std::lock_guard<std::mutex> lk(mu_);
     out=latest_;error=error_;return available_;
 }
-void ReadOnlyPoller::loop(std::string path,Mode expected,int timeout_ms)noexcept{
+void ReadOnlyPoller::loop(std::string path,Mode expected,int timeout_ms,
+                          bool mock_j5_control)noexcept{
     try{
-        Session s; s.connectTo(path,expected,timeout_ms);
-        std::uint64_t req=1;
+        Session s;
+        s.connectTo(path,expected,timeout_ms);
+        std::uint64_t req=1,seq=1;
+        Vec6 start_q{};
+        bool have_start=false,ever_armed=false;
         while(!stop_){
             const auto next=Clock::now()+std::chrono::milliseconds(20);
             const auto frame=s.get(req++);
-            {std::lock_guard<std::mutex> lk(mu_);latest_=frame;available_=true;error_="NONE";}
+            if(mock_j5_control && !have_start){
+                start_q=frame.q;
+                have_start=true;
+            }
+            {std::lock_guard<std::mutex> lk(mu_);
+                latest_=frame;available_=true;error_="NONE";}
+            if(mock_j5_control){
+                double delta=0.;
+                {std::lock_guard<std::mutex> lk(mu_);delta=mock_j5_delta_;}
+                // Always refresh the Mock TARGET when opt-in is enabled:
+                // no SDK controls, no generic Z1 joint targets.
+                Vec6 q=start_q;
+                q[4]+=delta;
+                s.target(seq++,q,true);
+                ever_armed=true;
+            }
             std::this_thread::sleep_until(next);
+        }
+        // Mock-only orderly DISARM; closing the one connection is the
+        // fallback if the IPC session is already broken.
+        if(mock_j5_control && ever_armed && have_start){
+            Vec6 q=start_q;
+            try {s.target(seq++,q,false);} catch(...) {}
         }
     }catch(const std::exception& ex){
         std::lock_guard<std::mutex> lk(mu_);
