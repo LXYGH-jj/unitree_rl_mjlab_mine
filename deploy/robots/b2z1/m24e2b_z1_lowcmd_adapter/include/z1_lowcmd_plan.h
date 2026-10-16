@@ -15,20 +15,29 @@ struct Limits {
     std::array<int,6> temperature_max{};
     std::chrono::milliseconds target_ttl{150};  // development value, NOT validated on hardware
 };
-// Only J3: a measured LOWCMD start a few encoder counts above the ALORE
-// software upper bound (0 rad) may be kept AS-IS, but may NEVER be
-// commanded farther outward. Not a motor mechanical-limit specification.
-// No automatic clamp or motion on entering keyboard ARM.
+// In the Z1 near-zero startup pose, J2 can be a few encoder counts BELOW
+// its software lower bound (0), while J3 can be slightly ABOVE its upper
+// bound (0). Only preserve their exact STARTUP COMMAND, never extend motion
+// outward. This is a limited software compatibility rule, NOT a mechanical
+// joint-limit change and NOT zero calibration.
+inline constexpr int kJ2Index=1;
 inline constexpr int kJ3Index=2;
-inline constexpr double kJ3StartupZeroSlackRad=0.0015;
-inline constexpr double kJ3AnchorEqualityRad=1e-8;
+inline constexpr double kZeroStartupSlackRad=0.0015;
+inline constexpr double kStartupAnchorEqualityRad=1e-8;
+inline bool frozenNearZeroStartup(int i,const Vec6& startup,
+                                  const Limits& l) noexcept {
+    if(i<0 || i>=6 || !std::isfinite(startup[i])) return false;
+    return (i==kJ2Index && startup[i]<l.lo[i] &&
+            startup[i]>=l.lo[i]-kZeroStartupSlackRad) ||
+           (i==kJ3Index && startup[i]>l.hi[i] &&
+            startup[i]<=l.hi[i]+kZeroStartupSlackRad);
+}
 inline bool targetWithinBenchLimits(int i,double goal,
                                     const Vec6& startup,const Limits& l) noexcept {
     if(i<0 || i>=6 || !std::isfinite(goal) || !std::isfinite(startup[i])) return false;
     if(goal>=l.lo[i] && goal<=l.hi[i]) return true;
-    return i==kJ3Index && startup[i]>l.hi[i] &&
-           startup[i]<=l.hi[i]+kJ3StartupZeroSlackRad &&
-           std::abs(goal-startup[i])<=kJ3AnchorEqualityRad;
+    return frozenNearZeroStartup(i,startup,l) &&
+           std::abs(goal-startup[i])<=kStartupAnchorEqualityRad;
 }
 
 struct Feedback {
