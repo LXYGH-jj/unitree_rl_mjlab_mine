@@ -22,31 +22,35 @@ PERIOD = 0.02
 # Worker validation remains authoritative; do not extend these limits.
 WORKER_JOINT_LO = (-2.618, 0.0, -2.8798, -1.5184, -1.3439, -2.7925)
 WORKER_JOINT_HI = ( 2.618, 2.9671, 0.0, 1.5184, 1.3439, 2.7925)
-J3_STARTUP_ZERO_SLACK_RAD = 0.0015  # Must match Planner C++.
-J3_ANCHOR_EQUALITY_RAD = 1e-8
+ZERO_STARTUP_SLACK_RAD = 0.0015  # Must match Planner C++.
+ANCHOR_EQUALITY_RAD = 1e-8
 
 
 def allowed_bench_target(joint, angle, startup):
+    """Strict targets, except the exact original J2/J3 near-zero anchor."""
     lower, upper = WORKER_JOINT_LO[joint], WORKER_JOINT_HI[joint]
     if not math.isfinite(angle) or not math.isfinite(startup[joint]):
         return False
     if lower <= angle <= upper:
         return True
-    return (joint == 2 and upper < startup[2] <= upper + J3_STARTUP_ZERO_SLACK_RAD
-            and abs(angle-startup[2]) <= J3_ANCHOR_EQUALITY_RAD)
-
+    frozen_j2 = (joint == 1 and lower - ZERO_STARTUP_SLACK_RAD
+                 <= startup[1] < lower)
+    frozen_j3 = (joint == 2 and upper < startup[2]
+                 <= upper + ZERO_STARTUP_SLACK_RAD)
+    return ((frozen_j2 or frozen_j3)
+            and abs(angle-startup[joint]) <= ANCHOR_EQUALITY_RAD)
 
 
 def require_valid_target_pose(q, action, startup):
-    """Reject a new out-of-bounds target, except the unchanged startup J3."""
+    """Reject new out-of-bounds movement; J2/J3 may hold exact startup anchors."""
     for i, angle in enumerate(q):
         if not allowed_bench_target(i, angle, startup):
             lower, upper = WORKER_JOINT_LO[i], WORKER_JOINT_HI[i]
             raise RuntimeError(
                 f"{action} REFUSED: J{i + 1}={angle:+.8f} rad "
                 f"outside Worker target range [{lower:+.6f}, {upper:+.6f}]. "
-                "Only the unchanged J3 startup position within +0.0015 rad "
-                "is admissible. No TARGET sent; closing client."
+                "Only unchanged J2 (-0.0015..0) or J3 (0..+0.0015) "
+                "startup anchors are admissible. No TARGET sent; closing client."
             )
 
 
@@ -130,7 +134,7 @@ def main():
         print("No movement commands until explicit a. Keep tool/operator clear.")
         print("Initial measured q:", " ".join(f"{v:+.3f}" for v in q), flush=True)
         print("Initial commanded HOLD q:", " ".join(f"{v:+.6f}" for v in origin), flush=True)
-        print("J3 startup near zero: only the unchanged initial +0..0.0015 rad is allowed.", flush=True)
+        print("Zero anchors: unchanged J2 -0.0015..0 / J3 0..+0.0015 rad permitted.", flush=True)
         fd = sys.stdin.fileno()
         saved = termios.tcgetattr(fd)
         try:
