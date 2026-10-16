@@ -3,6 +3,7 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <cmath>
 #include <stdexcept>
 #include <string>
 namespace m24e2b {
@@ -14,6 +15,22 @@ struct Limits {
     std::array<int,6> temperature_max{};
     std::chrono::milliseconds target_ttl{150};  // development value, NOT validated on hardware
 };
+// Only J3: a measured LOWCMD start a few encoder counts above the ALORE
+// software upper bound (0 rad) may be kept AS-IS, but may NEVER be
+// commanded farther outward. Not a motor mechanical-limit specification.
+// No automatic clamp or motion on entering keyboard ARM.
+inline constexpr int kJ3Index=2;
+inline constexpr double kJ3StartupZeroSlackRad=0.0015;
+inline constexpr double kJ3AnchorEqualityRad=1e-8;
+inline bool targetWithinBenchLimits(int i,double goal,
+                                    const Vec6& startup,const Limits& l) noexcept {
+    if(i<0 || i>=6 || !std::isfinite(goal) || !std::isfinite(startup[i])) return false;
+    if(goal>=l.lo[i] && goal<=l.hi[i]) return true;
+    return i==kJ3Index && startup[i]>l.hi[i] &&
+           startup[i]<=l.hi[i]+kJ3StartupZeroSlackRad &&
+           std::abs(goal-startup[i])<=kJ3AnchorEqualityRad;
+}
+
 struct Feedback {
     Vec6 q{}, dq{}, tau{};
     Vec6 sent_feedforward_tau{}; // Last SDK model+extra torque command, not motor feedback.
@@ -38,11 +55,12 @@ public:
     // feedback drift. May be outside strict target limits at initial startup;
     // arming must be denied until the physical reference is legal.
     Vec6 commandPosition() const noexcept {return q_command_;}
+    Vec6 startupPosition() const noexcept {return startup_q_;}
 private:
     [[noreturn]] void reject(const char*);
     void validateFeedback(const Feedback&, Time);
     Limits limits_{};
-    Vec6 q_command_{}, last_velocity_{};
+    Vec6 q_command_{}, last_velocity_{}, startup_q_{};
     Target target_{};
     std::uint64_t last_sequence_{0};
     Time last_issue_{};
