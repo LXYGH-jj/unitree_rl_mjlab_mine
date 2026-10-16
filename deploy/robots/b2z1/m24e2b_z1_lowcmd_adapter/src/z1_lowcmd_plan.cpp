@@ -79,14 +79,16 @@ Command Planner::tick(const Feedback& f,Time now,double dt){
            (error>0.0 && proposed>=target_.q[i]) ||
            (error<0.0 && proposed<=target_.q[i]))
             proposed=target_.q[i];
-        // If J3 started at +0.000xxx rad, keep that measured startup
-        // command unchanged while the operator moves another joint.
-        // Never allow a new J3 goal above this starting position.
-        const double high=(i==kJ3Index &&
-                           startup_q_[i]>limits_.hi[i] &&
-                           startup_q_[i]<=limits_.hi[i]+kJ3StartupZeroSlackRad)
-                              ? startup_q_[i] : limits_.hi[i];
-        proposed=std::clamp(proposed,limits_.lo[i],high);
+        // Preserve existing tiny near-zero startup J2/J3 references
+        // without producing a discontinuity when another joint moves.
+        // Outward target travel beyond the original software limits is
+        // still forbidden by acceptTarget(). This is NOT a motor limit.
+        double low=limits_.lo[i],high=limits_.hi[i];
+        if(frozenNearZeroStartup(i,startup_q_,limits_)){
+            if(i==kJ2Index) low=startup_q_[i];
+            if(i==kJ3Index) high=startup_q_[i];
+        }
+        proposed=std::clamp(proposed,low,high);
         if(std::abs(proposed-f.q[i])>0.30) reject("tracking error exceeds offline guard");
         // Position-derived speed cannot exceed the original velocity bound.
         out.dq[i]=std::clamp((proposed-q_command_[i])/dt,
