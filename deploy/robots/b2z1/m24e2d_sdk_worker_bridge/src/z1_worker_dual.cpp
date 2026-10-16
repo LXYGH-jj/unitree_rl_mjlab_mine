@@ -307,10 +307,13 @@ struct State {
                 // Never silently move/clamp an arm toward its hard stop on ARM.
                 const auto hold_ref=planner.commandPosition();
                 for(int i=0;i<6;++i)
-                    if(!std::isfinite(hold_ref[i])||hold_ref[i]<lo[i]||hold_ref[i]>hi[i])
+                    if(!planner.targetAllowed(i,hold_ref[i]))
                         return "V1 ERR 0 HOLD_REFERENCE_OUT_OF_LIMIT_J"+std::to_string(i+1);
             }
-            for(int i=0;i<6;++i)if(!std::isfinite(next[i])||next[i]<lo[i]||next[i]>hi[i]){
+            // Match Planner validation exactly; the only J3 exception is
+            // reproducing the measured startup command within +0.0015 rad.
+            // No newly requested travel outside the original bounds.
+            for(int i=0;i<6;++i)if(!planner.targetAllowed(i,next[i])){
                 enabled=false;fault_latched=true;planner.disarm();
                 fault_reason="TARGET_OUT_OF_LIMIT";
                 return "V1 ERR 0 TARGET_OUT_OF_LIMIT";
