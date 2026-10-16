@@ -17,6 +17,10 @@ Z1 SDK TARGET packets. Real Z1 actuation remains a separate bench validation ste
 - TARGET is implemented only for Mock. SDK movement from this new client is
   deliberately refused until E-stop, gains, watchdog and stop behaviors are
   qualified on the repaired Z1 bench. The M2.4e2d Worker remains the sole SDK owner.
+- An explicitly opted-in Mock J5 jog mode now reuses the SAME IPC owner thread
+  for 20ms GET/TARGET refresh; other 5 joints retain their first Mock GET
+  values, J5 offset is capped at +/-0.030 rad, and SDK mode cannot enable it.
+  Default ReadOnlyPoller remains GET-only. See docs/mock_j5_fsm_stage1.md.
 - `makeLiveInput()` combines REAL B2 leg/IMU feedback + Z1 IPC q/dq and calls
   **existing** `interactive_b2z1::adaptFeedback()`; it preserves the 12+6 joint
   order, nominal training EE coordinates and B2/Z1 age/skew checks.
