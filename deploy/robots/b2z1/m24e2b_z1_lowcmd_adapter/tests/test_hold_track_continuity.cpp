@@ -118,11 +118,13 @@ int main() {
             require(same(stay.q,before),"post-DISARM HOLD drifted");
         }
 
-        // J3 starts +0.000643092 above the ALORE software 0 upper
-        // bound, but its command MUST NOT move on keyboard ARM/J5 jog.
+        // Reproduce BOTH near-zero offsets from the real 1016 SDK log.
+        // J2 starts -0.00001180 below lower bound 0, J3 starts
+        // +0.000365795 above upper bound 0. Neither may move on ARM/J5 jog.
         now=Clock::now();
         Vec6 near_zero=startup;
-        near_zero[2]=+0.000643092; // captured physical HOLD command
+        near_zero[1]=-0.00001180;
+        near_zero[2]=+0.000365795;
         Planner start_planner(benchLimits());
         start_planner.reset(feedback(near_zero,now),now);
         now+=delta;
@@ -131,10 +133,18 @@ int main() {
 
         // Repeating exactly that J3 reference is the ONLY allowed
         // above-limit command. Other joints may still be controlled.
+        require(start_planner.targetAllowed(1,near_zero[1]),
+                "startup J2 frozen anchor should be admitted");
         require(start_planner.targetAllowed(2,near_zero[2]),
                 "startup J3 frozen anchor should be admitted");
+        require(!start_planner.targetAllowed(1,near_zero[1]-0.00001),
+                "J2 outward change must not be admissible");
         require(!start_planner.targetAllowed(2,near_zero[2]+0.00001),
                 "J3 outward change must not be admissible");
+        require(start_planner.targetAllowed(1,0.),
+                "J2 inward goal to 0 must remain permitted");
+        require(start_planner.targetAllowed(2,0.),
+                "J3 inward goal to 0 must remain permitted");
         Vec6 bench_j5=near_zero;
         bench_j5[4]+=0.005;
         start_planner.acceptTarget(Target{1,now,bench_j5,true},now);
@@ -146,6 +156,8 @@ int main() {
                                                   now,bench_j5,true},now);
             const auto cmd=start_planner.tick(feedback(near_feedback,now),now,dt);
             require(cmd.track,"near-zero J3/J5 TRACK not enabled");
+            require(std::abs(cmd.q[1]-near_zero[1])<1e-10,
+                    "J5 jog caused commanded J2 movement");
             require(std::abs(cmd.q[2]-near_zero[2])<1e-10,
                     "J5 jog caused commanded J3 movement");
             require(cmd.q[4]<=bench_j5[4]+1e-10,
@@ -155,12 +167,15 @@ int main() {
         require(std::abs(start_planner.commandPosition()[4]-bench_j5[4])<1e-8,
                 "J5 did not reach goal with near-zero J3 startup");
 
-        // +0.002 rad is too far outside the zero-startup exception.
+        // Both +/-0.002 rad are beyond the 0.0015 rad startup exception.
         now=Clock::now();
         Vec6 far_out=startup;
+        far_out[1]=-0.002;
         far_out[2]=+0.002;
         Planner far_planner(benchLimits());
         far_planner.reset(feedback(far_out,now),now);
+        require(!far_planner.targetAllowed(1,far_out[1]),
+                "J2 <-0.0015 startup should not be eligible for ARM");
         require(!far_planner.targetAllowed(2,far_out[2]),
                 "J3 >+0.0015 startup should not be eligible for ARM");
         bool rejected=false;
@@ -175,16 +190,30 @@ int main() {
         Planner outward_planner(benchLimits());
         outward_planner.reset(feedback(near_zero,now),now);
         Vec6 moved_outward=near_zero;
+        moved_outward[1]-=0.00005;
         moved_outward[2]+=0.00005;
         rejected=false;
         try {
             outward_planner.acceptTarget(Target{1,now,moved_outward,true},now);
         } catch(const std::exception&) {rejected=true;}
-        require(rejected,"J3 positive outward request wrongly accepted");
+        require(rejected,"J2/J3 outward request wrongly accepted");
+
+        // Explicitly reject each outward request independently.
+        for (int j : {1,2}) {
+            now=Clock::now();
+            Planner outward(benchLimits());
+            outward.reset(feedback(near_zero,now),now);
+            Vec6 bad=near_zero;
+            bad[j]+=(j==1?-0.00005:+0.00005);
+            rejected=false;
+            try {outward.acceptTarget(Target{1,now,bad,true},now);}
+            catch(const std::exception&) {rejected=true;}
+            require(rejected,"one-sided J2 or J3 outward change was accepted");
+        }
         std::cout<<"OFFLINE PASS: HOLD stays fixed across feedback drift; "
                     "HOLD->TRACK has no q jump; TRACK->HOLD preserves q; "
-                    "J5 target converges; near-zero J3 frozen while J5 moves; "
-                    "J3 outward commands rejected.\n";
+                    "J5 target converges; near-zero J2 and J3 frozen while J5 moves; "
+                    "outward commands rejected.\n";
         std::cout<<"NO physical SDK or motors were used.\n";
         return 0;
     } catch(const std::exception& e) {
