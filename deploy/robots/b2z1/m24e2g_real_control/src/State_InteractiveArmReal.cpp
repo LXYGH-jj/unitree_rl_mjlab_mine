@@ -54,6 +54,9 @@ State_InteractiveArmReal::State_InteractiveArmReal(int state,std::string label)
     if(std::abs(tcp_offset_-.0882)>.001)throw std::runtime_error("unexpected TCP offset");
     use_ik_goal_=c["ee_obs_source"].as<std::string>("ik_goal")=="ik_goal";
     if(!send_b2_&&walk_enabled_)throw std::runtime_error("walking forbidden when B2 output disabled");
+    mock_j5_jog_=c["enable_mock_z1_j5_jog"].as<bool>(false);
+    if(mock_j5_jog_ && (mode_!=m24e2e::Mode::Mock || send_b2_ || walk_enabled_))
+        throw std::runtime_error("Mock J5 keyboard jog requires Mock Z1, no B2 output or walking");
     // On a policy/feedback fault, promptly transition into the existing native
     // FixStand controller rather than silently cease periodic B2 LowCmd updates.
     // This is an engineering fallback, NOT a certified emergency stop.
@@ -106,12 +109,13 @@ void State_InteractiveArmReal::enter(){
     });
     pipeline_->reset();runner_->reset();
     // E2e poller owns the sole Unix IPC connection; it never sends Z1 SDK targets.
-    z1_.start(socket_path_,mode_);
+    z1_.start(socket_path_,mode_,40,mock_j5_jog_);
     entered_=next_motor_=Clock::now();
     b2_commanded_=b.motor_q;
     b2_desired_=b.motor_q;
     arm_initialized_=false;faulted_=false;walk_enabled_=walk_enabled_&&send_b2_;
     walking_=motion_was_started_=walk_rearm_=false;
+    mock_j5_delta_=0.0;
     motor_cycles_=policy_steps_=0;output_pending_=false;velocity_={0,0,0};
     if(send_b2_){
         auto& motors=lowcmd->msg_.motor_cmd();
@@ -190,6 +194,20 @@ void State_InteractiveArmReal::run(){
         const bool key=keyboard&&keyboard->on_pressed;
         const std::string keyname=keyboard?keyboard->key():"";
         if(key&&keyname==" "){velocity_={0,0,0};walking_=false;walk_rearm_=false;}
+        if(key&&mock_j5_jog_){
+            double new_delta=mock_j5_delta_;
+            if(keyname=="+" || keyname=="=")
+                new_delta=std::min(0.03,mock_j5_delta_+0.005);
+            else if(keyname=="-")
+                new_delta=std::max(-0.03,mock_j5_delta_-0.005);
+            else if(keyname=="0")
+                new_delta=0.0;
+            if(std::abs(new_delta-mock_j5_delta_)>1e-12){
+                z1_.setMockJ5Delta(new_delta);
+                mock_j5_delta_=new_delta;
+                spdlog::info("[M24e2g MOCK ONLY] Z1 J5 target offset={:.4f} rad",mock_j5_delta_);
+            }
+        }
         if(walk_enabled_&&key&&keyname=="w"&&!walk_rearm_&&
            now-entered_>=std::chrono::seconds(2)&&policy_steps_>2){
             velocity_={.12f,0,0};walking_=true;walk_rearm_=true;motion_was_started_=true;walk_started_=now;
