@@ -28,6 +28,7 @@ void Planner::validateFeedback(const Feedback& f,Time now){
 void Planner::reset(const Feedback& f,Time now){
     if(fault_) throw std::runtime_error("fault latched: construct new planner");
     validateFeedback(f,now);
+    startup_q_=f.q;
     q_command_=f.q;last_velocity_.fill(0);last_sequence_=0;last_issue_={};
     target_={}; initialized_=true; armed_=false;
 }
@@ -37,8 +38,9 @@ void Planner::acceptTarget(const Target& t,Time now){
        t.issued_at>now+std::chrono::milliseconds(10) ||
        now-t.issued_at>std::chrono::milliseconds(100) ||
        (last_issue_!=Time{} && t.issued_at<=last_issue_)) reject("invalid/replayed/stale target");
-    for(int i=0;i<6;i++) if(!std::isfinite(t.q[i]) ||
-          t.q[i]<limits_.lo[i] || t.q[i]>limits_.hi[i]) reject("out-of-limit target");
+    for(int i=0;i<6;i++)
+        if(!targetWithinBenchLimits(i,t.q[i],startup_q_,limits_))
+            reject("out-of-limit target");
     last_sequence_=t.seq; last_issue_=t.issued_at;target_=t;armed_=t.enable;
 }
 Command Planner::tick(const Feedback& f,Time now,double dt){
@@ -77,7 +79,14 @@ Command Planner::tick(const Feedback& f,Time now,double dt){
            (error>0.0 && proposed>=target_.q[i]) ||
            (error<0.0 && proposed<=target_.q[i]))
             proposed=target_.q[i];
-        proposed=std::clamp(proposed,limits_.lo[i],limits_.hi[i]);
+        // If J3 started at +0.000xxx rad, keep that measured startup
+        // command unchanged while the operator moves another joint.
+        // Never allow a new J3 goal above this starting position.
+        const double high=(i==kJ3Index &&
+                           startup_q_[i]>limits_.hi[i] &&
+                           startup_q_[i]<=limits_.hi[i]+kJ3StartupZeroSlackRad)
+                              ? startup_q_[i] : limits_.hi[i];
+        proposed=std::clamp(proposed,limits_.lo[i],high);
         if(std::abs(proposed-f.q[i])>0.30) reject("tracking error exceeds offline guard");
         // Position-derived speed cannot exceed the original velocity bound.
         out.dq[i]=std::clamp((proposed-q_command_[i])/dt,
