@@ -118,24 +118,73 @@ int main() {
             require(same(stay.q,before),"post-DISARM HOLD drifted");
         }
 
-        // Strict J3 boundary conflict: slightly positive initial feedback is
-        // admissible for observation/HOLD but cannot be an active TARGET.
+        // J3 starts +0.000643092 above the ALORE software 0 upper
+        // bound, but its command MUST NOT move on keyboard ARM/J5 jog.
         now=Clock::now();
-        Vec6 outside=startup;
-        outside[2]=+0.000643092; // captured Z1 HOLD CSV initial qcmd
-        Planner outside_planner(benchLimits());
-        outside_planner.reset(feedback(outside,now),now);
+        Vec6 near_zero=startup;
+        near_zero[2]=+0.000643092; // captured physical HOLD command
+        Planner start_planner(benchLimits());
+        start_planner.reset(feedback(near_zero,now),now);
         now+=delta;
-        auto hold_out=outside_planner.tick(feedback(outside,now),now,dt);
-        require(same(hold_out.q,outside),"HOLD improperly auto-clamped out-of-limit initial pose");
+        const auto start_hold=start_planner.tick(feedback(near_zero,now),now,dt);
+        require(same(start_hold.q,near_zero),"startup HOLD moved J3");
+
+        // Repeating exactly that J3 reference is the ONLY allowed
+        // above-limit command. Other joints may still be controlled.
+        require(start_planner.targetAllowed(2,near_zero[2]),
+                "startup J3 frozen anchor should be admitted");
+        require(!start_planner.targetAllowed(2,near_zero[2]+0.00001),
+                "J3 outward change must not be admissible");
+        Vec6 bench_j5=near_zero;
+        bench_j5[4]+=0.005;
+        start_planner.acceptTarget(Target{1,now,bench_j5,true},now);
+        auto near_feedback=near_zero;
+        for(int i=0;i<300;i++){
+            now+=delta;
+            if(i%20==0 && i>0)
+                start_planner.acceptTarget(Target{static_cast<std::uint64_t>(i/20+1),
+                                                  now,bench_j5,true},now);
+            const auto cmd=start_planner.tick(feedback(near_feedback,now),now,dt);
+            require(cmd.track,"near-zero J3/J5 TRACK not enabled");
+            require(std::abs(cmd.q[2]-near_zero[2])<1e-10,
+                    "J5 jog caused commanded J3 movement");
+            require(cmd.q[4]<=bench_j5[4]+1e-10,
+                    "J5 exceeded its position target");
+            near_feedback[4]=cmd.q[4];
+        }
+        require(std::abs(start_planner.commandPosition()[4]-bench_j5[4])<1e-8,
+                "J5 did not reach goal with near-zero J3 startup");
+
+        // +0.002 rad is too far outside the zero-startup exception.
+        now=Clock::now();
+        Vec6 far_out=startup;
+        far_out[2]=+0.002;
+        Planner far_planner(benchLimits());
+        far_planner.reset(feedback(far_out,now),now);
+        require(!far_planner.targetAllowed(2,far_out[2]),
+                "J3 >+0.0015 startup should not be eligible for ARM");
         bool rejected=false;
         try {
-            outside_planner.acceptTarget(Target{1,now,outside,true},now);
-        } catch (const std::exception&) { rejected=true; }
-        require(rejected,"out-of-limit J3 target was not rejected");
+            far_planner.acceptTarget(Target{1,now,far_out,true},now);
+        } catch(const std::exception&) {rejected=true;}
+        require(rejected,"J3 far outside 0 upper bound was accepted");
+
+        // Even with an eligible startup, moving J3 farther positive must
+        // remain forbidden; it cannot create a new positive travel range.
+        now=Clock::now();
+        Planner outward_planner(benchLimits());
+        outward_planner.reset(feedback(near_zero,now),now);
+        Vec6 moved_outward=near_zero;
+        moved_outward[2]+=0.00005;
+        rejected=false;
+        try {
+            outward_planner.acceptTarget(Target{1,now,moved_outward,true},now);
+        } catch(const std::exception&) {rejected=true;}
+        require(rejected,"J3 positive outward request wrongly accepted");
         std::cout<<"OFFLINE PASS: HOLD stays fixed across feedback drift; "
                     "HOLD->TRACK has no q jump; TRACK->HOLD preserves q; "
-                    "J5 target converges; strict J3 target boundary enforced.\n";
+                    "J5 target converges; near-zero J3 frozen while J5 moves; "
+                    "J3 outward commands rejected.\n";
         std::cout<<"NO physical SDK or motors were used.\n";
         return 0;
     } catch(const std::exception& e) {
